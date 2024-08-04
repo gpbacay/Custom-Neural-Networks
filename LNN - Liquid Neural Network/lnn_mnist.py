@@ -39,9 +39,12 @@ def create_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, out
     input_dim = x.shape[-1]
     reservoir_weights, input_weights = initialize_lnn_reservoir(input_dim, reservoir_dim, spectral_radius)
 
-    lnn_layer = layers.RNN(LNNStep(reservoir_weights, input_weights, leak_rate), return_sequences=False)
-    lnn_output = lnn_layer(tf.expand_dims(x, axis=1))
+    # Define the custom LNN layer
+    def lnn_layer_fn(x):
+        lnn_layer = layers.RNN(LNNStep(reservoir_weights, input_weights, leak_rate), return_sequences=False)
+        return lnn_layer(tf.expand_dims(x, axis=1))
 
+    lnn_output = layers.Lambda(lnn_layer_fn)(x)
     outputs = layers.Dense(output_dim, activation='softmax')(lnn_output)
 
     model = models.Model(inputs, outputs)
@@ -89,6 +92,7 @@ test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
 print(f"Test Accuracy: {test_accuracy:.4f}")
 
 
+
 # Liquid Nueral Network (LNN)
 # python lnn_mnist.py
-# Test Accuracy: 0.9390
+# Test Accuracy: 0.9370

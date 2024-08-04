@@ -92,5 +92,5 @@ test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
 print(f"Test Accuracy: {test_accuracy:.4f}")
 
 # Liquid State LSTM Neural Network (LSLNN)
-#_________________________python lslnn_mnist.py
-# Test Accuracy: 0.9759
+# python lslnn_mnist.py
+# Test Accuracy: 0.9690

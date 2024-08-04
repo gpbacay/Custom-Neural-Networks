@@ -96,4 +96,4 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 # Neurogenic Liquid Nueral Network (NLNN)
 # python nlnn_mnist.py
-# Test Accuracy: 0.8767
+# Test Accuracy: 0.8768
