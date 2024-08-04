@@ -3,10 +3,10 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-# Custom LNN Layer with Neurogenesis-like behavior
+# Custom LNN Layer with Neurogenic behavior
 class LNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, leak_rate, max_reservoir_dim, **kwargs):
-        super(LNNStep, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32)
         self.input_weights = tf.Variable(input_weights, dtype=tf.float32)
         self.leak_rate = leak_rate
@@ -21,35 +21,29 @@ class LNNStep(tf.keras.layers.Layer):
         input_part = tf.matmul(inputs, self.input_weights, transpose_b=True)
         reservoir_part = tf.matmul(prev_state, self.reservoir_weights, transpose_b=True)
         state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_part + reservoir_part)
-
-        # Ensure the state size matches the max reservoir size
-        active_size = tf.shape(state)[-1]
-        padded_state = tf.concat([state, tf.zeros([tf.shape(state)[0], self.max_reservoir_dim - active_size])], axis=1)
+        padded_state = tf.concat([state, tf.zeros([tf.shape(state)[0], self.max_reservoir_dim - tf.shape(state)[-1]])], axis=1)
         return padded_state, [padded_state]
 
-# Initialize LNN Reservoir with Neurogenesis-like behavior
+# Initialize LNN Reservoir
 def initialize_lnn_reservoir(input_dim, reservoir_dim, spectral_radius, max_reservoir_dim):
     reservoir_weights = np.random.randn(reservoir_dim, reservoir_dim)
-    reservoir_weights *= spectral_radius / np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
+    spectral_norm = np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
+    reservoir_weights *= spectral_radius / spectral_norm
     input_weights = np.random.randn(reservoir_dim, input_dim) * 0.1
     return reservoir_weights, input_weights
 
 # Neurogenic Liquid Neural Network (NLNN) Model
 class NLNNModel(tf.keras.Model):
     def __init__(self, input_dim, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim):
-        super(NLNNModel, self).__init__()
-        # Initialize LNN weights
+        super().__init__()
         self.reservoir_weights, self.input_weights = initialize_lnn_reservoir(
             input_dim, reservoir_dim, spectral_radius, max_reservoir_dim
         )
-        # LNN Layer
         self.lnn_layer = tf.keras.layers.RNN(
             LNNStep(self.reservoir_weights, self.input_weights, leak_rate, max_reservoir_dim),
             return_sequences=True
         )
-        # Flatten Layer
         self.flatten = tf.keras.layers.Flatten()
-        # Output Layer
         self.dense = tf.keras.layers.Dense(output_dim, activation='softmax')
 
     def call(self, inputs):
@@ -59,27 +53,17 @@ class NLNNModel(tf.keras.Model):
         return self.dense(x)
 
 # Load and preprocess MNIST dataset
+def preprocess_data(x):
+    x = x.astype(np.float32) / 255.0  # Normalize to [0, 1]
+    return x.reshape(-1, 28 * 28)
+
 (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
 x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
 
-# Normalize the data
-def normalize_data(x):
-    num_samples, height, width = x.shape
-    x = x.reshape(-1, width)
-    scaler = StandardScaler()
-    x = scaler.fit_transform(x)
-    return x.reshape(num_samples, height, width)
+x_train = preprocess_data(x_train)
+x_val = preprocess_data(x_val)
+x_test = preprocess_data(x_test)
 
-x_train = normalize_data(x_train)
-x_val = normalize_data(x_val)
-x_test = normalize_data(x_test)
-
-# Flatten the images for the dense layer
-x_train = x_train.reshape(-1, 28 * 28)
-x_val = x_val.reshape(-1, 28 * 28)
-x_test = x_test.reshape(-1, 28 * 28)
-
-# One-hot encode the labels
 y_train = tf.keras.utils.to_categorical(y_train)
 y_val = tf.keras.utils.to_categorical(y_val)
 y_test = tf.keras.utils.to_categorical(y_test)
@@ -97,11 +81,13 @@ num_epochs = 10
 model = NLNNModel(input_dim, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim)
 
 # Compile and train the model
-early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
-reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True),
+    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
+]
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-model.fit(x_train, y_train, epochs=num_epochs, batch_size=64, validation_data=(x_val, y_val), callbacks=[early_stopping, reduce_lr])
+model.fit(x_train, y_train, epochs=num_epochs, batch_size=64, validation_data=(x_val, y_val), callbacks=callbacks)
 
 # Evaluate the model on the test set
 test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
@@ -110,4 +96,4 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 # Neurogenic Liquid Nueral Network (NLNN)
 # python nlnn_mnist.py
-# Test Accuracy: 0.9648
+# Test Accuracy: 0.8767
