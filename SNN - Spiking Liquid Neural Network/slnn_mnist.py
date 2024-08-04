@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.layers import Dense, Input
+from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -10,8 +10,8 @@ from sklearn.preprocessing import StandardScaler
 class SpikingLNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, leak_rate, max_reservoir_dim, spike_threshold=1.0, **kwargs):
         super(SpikingLNNStep, self).__init__(**kwargs)
-        self.reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32)
-        self.input_weights = tf.Variable(input_weights, dtype=tf.float32)
+        self.reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32, trainable=False)
+        self.input_weights = tf.Variable(input_weights, dtype=tf.float32, trainable=False)
         self.leak_rate = leak_rate
         self.max_reservoir_dim = max_reservoir_dim
         self.spike_threshold = spike_threshold
@@ -35,14 +35,12 @@ class SpikingLNNStep(tf.keras.layers.Layer):
         padded_state = tf.concat([state, tf.zeros([tf.shape(state)[0], self.max_reservoir_dim - active_size])], axis=1)
         return padded_state, [padded_state]
 
-# Initialize LNN Reservoir with Spiking Dynamics
 def initialize_spiking_lnn_reservoir(input_dim, reservoir_dim, spectral_radius, max_reservoir_dim):
     reservoir_weights = np.random.randn(reservoir_dim, reservoir_dim)
     reservoir_weights *= spectral_radius / np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
     input_weights = np.random.randn(reservoir_dim, input_dim) * 0.1
     return reservoir_weights, input_weights, max_reservoir_dim
 
-# Spiking Liquid Neural Network (SNLNN) Model
 def create_spiking_nlnn_model(input_dim, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim):
     inputs = Input(shape=(input_dim,))
 
@@ -50,14 +48,24 @@ def create_spiking_nlnn_model(input_dim, reservoir_dim, spectral_radius, leak_ra
     reservoir_weights, input_weights, max_reservoir_dim = initialize_spiking_lnn_reservoir(input_dim, reservoir_dim, spectral_radius, max_reservoir_dim)
 
     # Spiking LNN Layer
-    lnn_layer = tf.keras.layers.RNN(SpikingLNNStep(reservoir_weights, input_weights, leak_rate, max_reservoir_dim), return_sequences=True)
-    lnn_output = lnn_layer(tf.expand_dims(inputs, axis=1))
+    lnn_layer = tf.keras.layers.RNN(
+        SpikingLNNStep(reservoir_weights, input_weights, leak_rate, max_reservoir_dim),
+        return_sequences=True
+    )
 
-    # Flatten the LNN output
-    lnn_output = tf.keras.layers.Flatten()(lnn_output)
+    def apply_spiking_lnn(x):
+        lnn_output = lnn_layer(tf.expand_dims(x, axis=1))
+        return tf.keras.layers.Flatten()(lnn_output)
 
-    # Output Layer
-    outputs = Dense(output_dim, activation='softmax')(lnn_output)
+    lnn_output = Lambda(apply_spiking_lnn)(inputs)
+    
+    # Additional layers for improved performance
+    x = Dense(128, activation='relu')(lnn_output)
+    x = Dropout(0.5)(x)
+    x = Dense(64, activation='relu')(x)
+    x = Dropout(0.5)(x)
+
+    outputs = Dense(output_dim, activation='softmax')(x)
 
     model = keras.Model(inputs, outputs)
     return model
@@ -66,7 +74,6 @@ def create_spiking_nlnn_model(input_dim, reservoir_dim, spectral_radius, leak_ra
 (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
 x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
 
-# Normalize the data
 def normalize_data(x):
     num_samples, height, width = x.shape
     x = x.reshape(-1, width)
@@ -78,12 +85,10 @@ x_train = normalize_data(x_train)
 x_val = normalize_data(x_val)
 x_test = normalize_data(x_test)
 
-# Flatten the images for the dense layer
 x_train = x_train.reshape(-1, 28 * 28)
 x_val = x_val.reshape(-1, 28 * 28)
 x_test = x_test.reshape(-1, 28 * 28)
 
-# One-hot encode the labels
 y_train = keras.utils.to_categorical(y_train)
 y_val = keras.utils.to_categorical(y_val)
 y_test = keras.utils.to_categorical(y_test)
@@ -96,6 +101,7 @@ spectral_radius = 1.5
 leak_rate = 0.3
 output_dim = 10
 num_epochs = 10
+batch_size = 64
 
 # Create Spiking Liquid Neural Network (SNLNN) model
 model = create_spiking_nlnn_model(input_dim, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim)
@@ -105,7 +111,7 @@ early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weig
 reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-model.fit(x_train, y_train, epochs=num_epochs, batch_size=64, validation_data=(x_val, y_val), callbacks=[early_stopping, reduce_lr])
+model.fit(x_train, y_train, epochs=num_epochs, batch_size=batch_size, validation_data=(x_val, y_val), callbacks=[early_stopping, reduce_lr])
 
 # Evaluate the model on the test set
 test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
@@ -113,4 +119,4 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 # Spiking Liquid Nueral Network (SLNN)
 # python slnn_mnist.py
-# Test Accuracy: 0.9624
+# Test Accuracy: 0.9153
