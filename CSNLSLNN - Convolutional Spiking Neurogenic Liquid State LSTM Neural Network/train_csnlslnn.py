@@ -1,5 +1,3 @@
-# csnlslnn_train.py
-
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Flatten, LSTM
@@ -111,7 +109,7 @@ def load_and_preprocess_data():
 
 def main():
     input_shape = (28, 28, 1)
-    reservoir_dim = 100
+    reservoir_dim = 1000
     spectral_radius = 1.5
     leak_rate = 0.3
     output_dim = 10
@@ -148,4 +146,4 @@ if __name__ == "__main__":
 
 
 # python train_csnlslnn.py
-# Test Accuracy: 0.9917
+# Test Accuracy: 0.9917 (Max)

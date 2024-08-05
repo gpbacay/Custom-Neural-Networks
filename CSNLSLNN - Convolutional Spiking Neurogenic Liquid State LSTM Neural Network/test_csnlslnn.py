@@ -1,5 +1,3 @@
-# csnlslnn_test.py
-
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.preprocessing import image
@@ -84,7 +82,7 @@ def test_model_with_image(model_path, img_path):
 
 if __name__ == "__main__":
     model_path = 'TrainedModels/csnlslnn_mnist.keras'
-    img_path = 'img_5.png'
+    img_path = 'img_1.jpg'
     test_model_with_image(model_path, img_path)
 
 
