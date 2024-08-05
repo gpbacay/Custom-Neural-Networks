@@ -1,9 +1,9 @@
 import tensorflow as tf
-from tensorflow import keras
 from tensorflow.keras import layers, models
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 class LNNStep(layers.Layer):
     def __init__(self, reservoir_dim, input_dim, spectral_radius, leak_rate, **kwargs):
@@ -68,7 +68,7 @@ def normalize_data(x):
     return StandardScaler().fit_transform(x.reshape(-1, x.shape[-1])).reshape(x.shape)
 
 def load_and_preprocess_data():
-    (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
 
     x_train = normalize_data(x_train)
@@ -79,9 +79,9 @@ def load_and_preprocess_data():
     x_val = x_val.reshape(-1, 28, 28, 1)
     x_test = x_test.reshape(-1, 28, 28, 1)
 
-    y_train = keras.utils.to_categorical(y_train)
-    y_val = keras.utils.to_categorical(y_val)
-    y_test = keras.utils.to_categorical(y_test)
+    y_train = tf.keras.utils.to_categorical(y_train)
+    y_val = tf.keras.utils.to_categorical(y_val)
+    y_test = tf.keras.utils.to_categorical(y_test)
 
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
@@ -97,15 +97,27 @@ def main():
     batch_size = 64
 
     (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_and_preprocess_data()
+    
+    # Data augmentation
+    datagen = ImageDataGenerator(
+        rotation_range=10,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        shear_range=0.1,
+        zoom_range=0.1,
+        horizontal_flip=False,
+        fill_mode='nearest'
+    )
+    datagen.fit(x_train)
 
     model = create_cllnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, lstm_units, output_dim)
 
-    early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3)
 
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     model.fit(
-        x_train, y_train,
+        datagen.flow(x_train, y_train, batch_size=batch_size),  # Use data augmentation
         epochs=num_epochs,
         batch_size=batch_size,
         validation_data=(x_val, y_val),
@@ -117,6 +129,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 # Convolutional LSTM Liquid Nueral Network (CLLNN)
 # python cllnn_mnist.py

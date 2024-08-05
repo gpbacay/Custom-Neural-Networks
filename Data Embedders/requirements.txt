@@ -1,0 +1,17 @@
+tensorflow
+transformers
+tensorflow_hub
+pillow
+numpy
+librosa
+moviepy
+python-docx
+pypdf2
+python-pptx
+pandas
+requests
+scikit-learn
+
+
+
+# pip install -r requirements.txt
