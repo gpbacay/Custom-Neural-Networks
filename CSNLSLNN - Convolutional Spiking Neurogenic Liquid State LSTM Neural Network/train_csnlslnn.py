@@ -1,3 +1,5 @@
+# csnlslnn_train.py
+
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Flatten, LSTM
@@ -16,12 +18,10 @@ class SpikingLNNLayer(tf.keras.layers.Layer):
         self.spike_threshold = spike_threshold
 
     def call(self, x):
-        # Ensure input dimensions are compatible
         batch_size = tf.shape(x)[0]
         reservoir_dim = self.reservoir_weights.shape[0]
         state = tf.zeros((batch_size, reservoir_dim), dtype=tf.float32)
         
-        # Process the input
         input_part = tf.matmul(x, self.input_weights, transpose_b=True)
         reservoir_part = tf.matmul(state, self.reservoir_weights, transpose_b=True)
         state = (1 - self.leak_rate) * state + self.leak_rate * tf.tanh(input_part + reservoir_part)
@@ -32,8 +32,8 @@ class SpikingLNNLayer(tf.keras.layers.Layer):
     def get_config(self):
         config = super(SpikingLNNLayer, self).get_config()
         config.update({
-            "reservoir_weights": self.reservoir_weights.numpy(),
-            "input_weights": self.input_weights.numpy(),
+            "reservoir_weights": self.reservoir_weights.numpy().tolist(),
+            "input_weights": self.input_weights.numpy().tolist(),
             "leak_rate": self.leak_rate,
             "spike_threshold": self.spike_threshold,
         })
@@ -41,14 +41,13 @@ class SpikingLNNLayer(tf.keras.layers.Layer):
 
     @classmethod
     def from_config(cls, config):
-        config["reservoir_weights"] = np.array(config.pop("reservoir_weights"))
-        config["input_weights"] = np.array(config.pop("input_weights"))
-        return cls(**config)
+        reservoir_weights = np.array(config.pop("reservoir_weights"))
+        input_weights = np.array(config.pop("input_weights"))
+        return cls(reservoir_weights, input_weights, **config)
 
 def create_csnlslnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim):
     inputs = Input(shape=input_shape)
 
-    # EfficientNet-like Convolutional layers for feature extraction
     x = tf.keras.layers.Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False)(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
@@ -58,19 +57,15 @@ def create_csnlslnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
     x = Flatten()(x)
 
-    # Initialize reservoir and input weights
     reservoir_weights, input_weights = initialize_reservoir(x.shape[-1], reservoir_dim, spectral_radius)
     
-    # Apply Spiking LNN layer
     spiking_lnn_layer = SpikingLNNLayer(reservoir_weights, input_weights, leak_rate)
     lnn_output = spiking_lnn_layer(x)
     lnn_output_reshaped = tf.keras.layers.Reshape((1, -1))(lnn_output)
 
-    # Add LSTM layers for sequential processing
     x = LSTM(128, return_sequences=True, dropout=0.3)(lnn_output_reshaped)
     x = LSTM(64, dropout=0.3)(x)
 
-    # Final classification layer
     outputs = Dense(output_dim, activation='softmax')(x)
 
     model = tf.keras.Model(inputs, outputs)
@@ -152,6 +147,5 @@ if __name__ == "__main__":
     main()
 
 
-# Convolutional Spiking Neurogenic Liquid State LSTM Neural Network (CSNLSLNN)
-# python csnlslnn_mnist.py
-# Test Accuracy: 0.9808
+# python train_csnlslnn.py
+# Test Accuracy: 0.9917
