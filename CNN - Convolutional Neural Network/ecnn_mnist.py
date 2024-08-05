@@ -113,6 +113,7 @@ if __name__ == "__main__":
     main()
 
 
+
 # Efficient Convolutional Neural Network (ECNN)
 # python ecnn_mnist.py
-# Test Accuracy: 0.9862
+# Test Accuracy: 0.9905
