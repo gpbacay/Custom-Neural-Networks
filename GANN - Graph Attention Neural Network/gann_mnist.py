@@ -11,7 +11,7 @@ class GraphAttentionLayer(tf.keras.layers.Layer):
         self.output_dim = output_dim
         self.dense = Dense(output_dim)
         self.attention_dense = Dense(1, use_bias=True)
-
+    
     def call(self, inputs):
         x = self.dense(inputs)
         attention_scores = self.attention_dense(x)
@@ -60,4 +60,4 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 # Graph Attention Neural Network (GANN)
 # python gann_mnist.py
-# Test Accuracy: 0.9671
+# Test Accuracy: 0.9694
