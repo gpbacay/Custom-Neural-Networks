@@ -1,2 +1,2 @@
 # Custom-Neural-Networks
-Experimental Custom Neural Networks or Hybrid of Neural Networks
+A repository of custom hybrid neural networks which includes CNNs, SNNs, LNNs, LSTMs, GNNs, and Transformers for image classification and time-series prediction.
