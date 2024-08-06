@@ -93,4 +93,4 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 # Liquid State LSTM Neural Network (LSLNN)
 # python lslnn_mnist.py
-# Test Accuracy: 0.9690
+# Test Accuracy: 0.9732
