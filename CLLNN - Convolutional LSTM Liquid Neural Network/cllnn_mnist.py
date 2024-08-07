@@ -94,7 +94,7 @@ def main():
     lstm_units = 50
     output_dim = 10
     num_epochs = 10
-    batch_size = 64
+    batch_size = 128
 
     (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_and_preprocess_data()
     

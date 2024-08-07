@@ -236,7 +236,7 @@ print(f"Test accuracy: {test_accuracy:.4f}")
 
 ## Results and Analysis
 
-```plaintext
+```shell
 
 2024-08-02 17:23:09.978943: I tensorflow/core/platform/cpu_feature_guard.cc:182] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
 To enable the following instructions: SSE SSE2 SSE3 SSE4.1 SSE4.2 AVX AVX2 AVX_VNNI FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
