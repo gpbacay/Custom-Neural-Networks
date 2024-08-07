@@ -125,6 +125,6 @@ history = cllnn_model.fit(x_train, y_train, epochs=10, batch_size=128, validatio
 test_loss, test_accuracy = cllnn_model.evaluate(x_test, y_test)
 print(f"Test accuracy: {test_accuracy:.4f}")
 
-
+# CLLNN - Convolutional LSTM Liquid Neural Network
 # python cllnn_mnist_v1.py
 # Test Accuracy: 0.9911
