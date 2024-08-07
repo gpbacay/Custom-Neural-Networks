@@ -37,3 +37,4 @@ if __name__ == "__main__":
 
 
 # python gnn_prototype_tensorflow.py
+# Test Accuracy: Error

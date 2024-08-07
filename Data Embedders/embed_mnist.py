@@ -53,3 +53,6 @@ if __name__ == "__main__":
     mnist_image = mnist_test_images[0]
     mnist_embedding = embedder.embed_mnist(mnist_image)
     print("MNIST Embedding:", mnist_embedding)
+
+
+# python embed_mnist.py

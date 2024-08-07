@@ -11,6 +11,11 @@ python-pptx
 pandas
 requests
 scikit-learn
+spektral
+
+torch 
+torchvision
+torch-geometric
 
 
 
