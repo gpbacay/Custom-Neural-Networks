@@ -3,7 +3,6 @@ import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 
 # Custom Spiking LNN Layer with Spiking Dynamics
 class SpikingLNNStep(tf.keras.layers.Layer):
