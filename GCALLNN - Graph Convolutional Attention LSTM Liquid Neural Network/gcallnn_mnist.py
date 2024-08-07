@@ -1,4 +1,3 @@
-import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, LSTM, Dense, Input, Flatten, TimeDistributed
@@ -6,9 +5,9 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
 
-class SimpleAttentionLayer(keras.layers.Layer):
+class GraphAttentionLayer(keras.layers.Layer):
     def __init__(self, units, **kwargs):
-        super(SimpleAttentionLayer, self).__init__(**kwargs)
+        super(GraphAttentionLayer, self).__init__(**kwargs)
         self.W = Dense(units, activation='tanh')
         self.V = Dense(1)
 
@@ -19,7 +18,7 @@ class SimpleAttentionLayer(keras.layers.Layer):
         return context_vector
 
 class LNNLayer(keras.layers.Layer):
-    def __init__(self, units, spectral_radius=0.9, leak_rate=0.1, return_sequences=False, **kwargs):
+    def __init__(self, units, spectral_radius=0.9, leak_rate=0.2, return_sequences=True, **kwargs):
         super(LNNLayer, self).__init__(**kwargs)
         self.units = units
         self.spectral_radius = spectral_radius
@@ -53,7 +52,7 @@ class LNNLayer(keras.layers.Layer):
     def compute_output_shape(self, input_shape):
         return (input_shape[0], input_shape[1], self.units) if self.return_sequences else (input_shape[0], self.units)
 
-def create_optimized_hybrid_model(input_shape, lnn_units, lstm_units, output_dim):
+def create_gcallnn_model(input_shape, lnn_units, lstm_units, output_dim):
     inputs = Input(shape=input_shape)
     
     # CNN layers
@@ -66,7 +65,7 @@ def create_optimized_hybrid_model(input_shape, lnn_units, lstm_units, output_dim
     x = TimeDistributed(Flatten())(x)
     
     # Attention layer
-    x = SimpleAttentionLayer(64)(x)
+    x = GraphAttentionLayer(64)(x)
     
     # LNN layer
     x = LNNLayer(lnn_units, return_sequences=True)(x)
@@ -90,16 +89,16 @@ y_train, y_test = to_categorical(y_train, 10), to_categorical(y_test, 10)
 
 # Set hyperparameters
 input_shape = (28, 28, 1)
-lnn_units = 64
-lstm_units = 64
+lnn_units = 512
+lstm_units = 128
 output_dim = 10
 
 # Create and compile the model
-model = create_optimized_hybrid_model(input_shape, lnn_units, lstm_units, output_dim)
+model = create_gcallnn_model(input_shape, lnn_units, lstm_units, output_dim)
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # Train the model
-history = model.fit(x_train, y_train, epochs=10, batch_size=128, validation_split=0.1, verbose=1)
+history = model.fit(x_train, y_train, epochs=10, batch_size=64, validation_split=0.1, verbose=1)
 
 # Evaluate the model
 test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=0)
