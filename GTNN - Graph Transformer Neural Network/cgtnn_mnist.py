@@ -7,9 +7,9 @@ from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 # Graph Transformer Network (GTNN) Layers
-class SimplifiedGraphTransformerLayer(tf.keras.layers.Layer):
+class GraphTransformerLayer(tf.keras.layers.Layer):
     def __init__(self, output_dim, num_heads=2):
-        super(SimplifiedGraphTransformerLayer, self).__init__()
+        super(GraphTransformerLayer, self).__init__()
         self.output_dim = output_dim
         self.num_heads = num_heads
         self.head_dim = output_dim // num_heads
@@ -44,9 +44,9 @@ class SimplifiedGraphTransformerLayer(tf.keras.layers.Layer):
         output = self.combine_heads(attended_values)
         return output
 
-class SimplifiedGraphTransformerLayerWrapper(tf.keras.layers.Layer):
+class GraphTransformerLayerWrapper(tf.keras.layers.Layer):
     def __init__(self, output_dim, num_heads=2):
-        super(SimplifiedGraphTransformerLayerWrapper, self).__init__()
+        super(GraphTransformerLayerWrapper, self).__init__()
         self.output_dim = output_dim
         self.num_heads = num_heads
 
@@ -61,7 +61,7 @@ class SimplifiedGraphTransformerLayerWrapper(tf.keras.layers.Layer):
 
     def call(self, inputs):
         node_features, _ = inputs
-        return SimplifiedGraphTransformerLayer(self.output_dim, self.num_heads)(node_features, self.adjacency_matrix)
+        return GraphTransformerLayer(self.output_dim, self.num_heads)(node_features, self.adjacency_matrix)
 
 # Efficient Convolutional Neural Network (ECNN) Model
 def create_efficient_cnn_model(input_shape, num_classes):
@@ -174,5 +174,5 @@ if __name__ == "__main__":
 
 # Convolutional Graph Transformer Neural Network (CGTNN)
 # python cgtnn_mnist.py
-# Test Accuracy: 0.9924
+# Test Accuracy: 0.9810
 
