@@ -52,6 +52,6 @@ test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
 print(f"Test Accuracy: {test_accuracy:.4f}")
 
 
-
+# Graph Transformer Neural Network (GTNN)
 # python gtnn_mnist.py
 # Test Accuracy: 0.8595
