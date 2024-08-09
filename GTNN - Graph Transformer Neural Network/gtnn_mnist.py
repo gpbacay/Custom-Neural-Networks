@@ -1,7 +1,6 @@
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.layers import Dense, GlobalAveragePooling1D, MultiHeadAttention, LayerNormalization, Layer
-import numpy as np
 
 # Custom Graph Transformer Layer
 class GraphTransformerLayer(Layer):
@@ -55,4 +54,4 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 
 # python gtnn_mnist.py
-# Test Accuracy: 0.8520
+# Test Accuracy: 0.8595
