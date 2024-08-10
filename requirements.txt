@@ -1,6 +1,7 @@
 tensorflow
 transformers
 tensorflow_hub
+tensorflow-addons
 pillow
 numpy
 librosa

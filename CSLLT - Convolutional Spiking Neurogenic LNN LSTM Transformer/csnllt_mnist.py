@@ -202,4 +202,4 @@ print(f'Test accuracy: {test_acc:.4f}')
 
 # Convolutional Spiking Neurogenic Liquid State LSTM Transformer (CSNLLT)
 # python csnllt_mnist.py
-# Test accuracy: 0.9901
+# Test accuracy: 0.9921
