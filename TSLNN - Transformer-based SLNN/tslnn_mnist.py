@@ -139,4 +139,4 @@ print(f"Sample prediction: {np.argmax(predictions[0])}")
 # pip install tensorflow-addons
 # Transformer-based SLNN (TSLNN)
 # python tslnn_mnist.py
-# Test Accuracy: 
+# Test Accuracy: Error/Slow/Neep Optimization
