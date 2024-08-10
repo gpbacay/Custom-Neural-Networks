@@ -24,8 +24,8 @@ This project implements a hybrid Transformer-Spiking Liquid Neural Network (LNN)
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/transformer-spiking-lnn-audio.git
-   cd transformer-spiking-lnn-audio
+   git clone https://github.com/gpbacay/Custom-Neural-Networks.git
+   cd TNN -Transformer Neural Network/tslnn_encoder_wav_to_emb.py
    ```
 
 2. Install the required packages:
@@ -41,7 +41,7 @@ This project implements a hybrid Transformer-Spiking Liquid Neural Network (LNN)
 
 3. Run the script:
    ```
-   python transformer_spiking_lnn_audio.py
+   python tslnn_encoder_wav_to_emb.py
    ```
 
 4. The script will process the audio files, extract features, and save them in the `Features` directory.
