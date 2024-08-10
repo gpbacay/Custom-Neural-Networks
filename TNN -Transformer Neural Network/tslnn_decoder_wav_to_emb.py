@@ -1,4 +1,3 @@
-# Importing necessary libraries
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten, MultiHeadAttention, LayerNormalization, GlobalAveragePooling1D
@@ -44,12 +43,32 @@ def initialize_spiking_lnn_reservoir(input_dim, reservoir_dim, spectral_radius, 
     input_weights = np.random.randn(reservoir_dim, input_dim) * 0.1
     return reservoir_weights, input_weights
 
-# Create the hybrid Transformer-Spiking LNN model
-def create_transformer_spiking_model(input_dim, num_heads, ff_dim, num_blocks, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim):
+# Transformer Decoder Block
+def transformer_decoder_block(x, enc_output, num_heads, ff_dim):
+    # Masked MultiHeadAttention
+    dec_self_attention = MultiHeadAttention(num_heads=num_heads, key_dim=x.shape[-1])(x, x)
+    dec_self_attention = Dropout(0.1)(dec_self_attention)
+    dec_self_attention = LayerNormalization(epsilon=1e-6)(x + dec_self_attention)
+
+    # MultiHeadAttention over encoder output
+    dec_enc_attention = MultiHeadAttention(num_heads=num_heads, key_dim=x.shape[-1])(dec_self_attention, enc_output)
+    dec_enc_attention = Dropout(0.1)(dec_enc_attention)
+    dec_enc_attention = LayerNormalization(epsilon=1e-6)(dec_self_attention + dec_enc_attention)
+    
+    # Feed Forward Network
+    x_ff = Dense(ff_dim, activation='relu')(dec_enc_attention)
+    x_ff = Dense(x.shape[-1])(x_ff)
+    x_ff = Dropout(0.1)(x_ff)
+    x_ff = LayerNormalization(epsilon=1e-6)(dec_enc_attention + x_ff)
+    
+    return x_ff
+
+# Create the hybrid Transformer-Spiking LNN model with Decoder
+def create_transformer_spiking_model_with_decoder(input_dim, num_heads, ff_dim, num_blocks, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim):
     inputs = Input(shape=(None, input_dim))
     x = inputs
     
-    # Transformer blocks
+    # Transformer Encoder
     for _ in range(num_blocks):
         x = MultiHeadAttention(num_heads=num_heads, key_dim=input_dim)(x, x)
         x = Dropout(0.1)(x)
@@ -59,7 +78,7 @@ def create_transformer_spiking_model(input_dim, num_heads, ff_dim, num_blocks, r
         x = x + x_ff
         x = Dropout(0.1)(x)
         x = LayerNormalization(epsilon=1e-6)(x)
-    x = GlobalAveragePooling1D()(x)
+    enc_output = GlobalAveragePooling1D()(x)
     
     # Initialize and apply the Spiking LNN layer
     reservoir_weights, input_weights = initialize_spiking_lnn_reservoir(input_dim, reservoir_dim, spectral_radius, max_reservoir_dim)
@@ -75,15 +94,19 @@ def create_transformer_spiking_model(input_dim, num_heads, ff_dim, num_blocks, r
     def get_output_shape(input_shape):
         return (input_shape[0], max_reservoir_dim)
 
-    lnn_output = Lambda(apply_spiking_lnn, output_shape=get_output_shape)(x)
-
+    lnn_output = Lambda(apply_spiking_lnn, output_shape=get_output_shape)(enc_output)
+    
+    # Transformer Decoder
+    x_dec = Input(shape=(None, input_dim))
+    dec_output = transformer_decoder_block(x_dec, enc_output, num_heads, ff_dim)
+    
     # Final dense layers for feature extraction
     x = Dense(128, activation='relu')(lnn_output)
     x = Dropout(0.5)(x)
     x = Dense(64, activation='relu')(x)
     x = Dropout(0.5)(x)
 
-    model = tf.keras.Model(inputs, x)
+    model = tf.keras.Model(inputs=[inputs, x_dec], outputs=x)
     return model
 
 # Load audio file using librosa or soundfile
@@ -150,7 +173,7 @@ if audio_features is not None and len(audio_features) > 0:
     leak_rate = 0.3
 
     # Create and compile the model
-    model = create_transformer_spiking_model(input_dim, num_heads, ff_dim, num_blocks, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim)
+    model = create_transformer_spiking_model_with_decoder(input_dim, num_heads, ff_dim, num_blocks, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim)
     model.compile(optimizer='adam', loss='mse')
 
     # Function to extract features from a single audio file
@@ -158,7 +181,7 @@ if audio_features is not None and len(audio_features) > 0:
         audio_feature = preprocess_audio(audio_file_path)
         if audio_feature is not None:
             audio_feature = audio_feature.reshape(1, -1, input_dim)
-            features = model.predict(audio_feature)
+            features = model.predict([audio_feature, audio_feature])  # Dummy decoder input
             return features
         return None
 
@@ -173,23 +196,8 @@ if audio_features is not None and len(audio_features) > 0:
 else:
     print("No valid audio features extracted. Please check your audio files.")
 
-# pip install --upgrade librosa soundfile audioread
-# Transformer-based SLNN Encoder Model (TSLNN-E)
-# python tslnn_encoder_wav_to_emb.py
-"""
-Attempting to load audio file: applause.wav
-Loaded with librosa: Sample rate 48000, shape (1199232,)
-1/1 ━━━━━━━━━━━━━━━━━━━━ 1s 761ms/step
-Extracted Features: [[0.10294048 0.         0.08104667 0.0715439  0.03073235 0.00127863
-  0.         0.         0.02023316 0.09165004 0.04390178 0.04869283
-  0.16776186 0.         0.06369713 0.         0.         0.04182693
-  0.         0.10296468 0.         0.0415316  0.         0.
-  0.08364696 0.         0.02225025 0.05985401 0.         0.00986295
-  0.08072463 0.         0.         0.04832723 0.05203104 0.04795967
-  0.         0.         0.         0.         0.04754353 0.0487162
-  0.00336315 0.05536728 0.0512665  0.         0.04158994 0.07643519
-  0.         0.         0.03484162 0.         0.02666362 0.03639041
-  0.039964   0.07919361 0.         0.         0.05009118 0.
-  0.         0.         0.05819657 0.08545422]]
-"""
 
+
+
+# Transformer-based SLNN Decoder Model (TSLNN-D)
+# python tslnn_decoder_wav_to_emb.py
