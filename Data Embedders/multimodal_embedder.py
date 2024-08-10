@@ -1,6 +1,6 @@
 import tensorflow as tf
 from transformers import TFBertModel, BertTokenizer
-from tensorflow.keras.applications import ResNet50, resnet50
+from tensorflow.keras.applications import ResNet50
 from tensorflow.keras.preprocessing import image as keras_image
 from tensorflow.keras.applications.resnet50 import preprocess_input
 from tensorflow.keras.datasets import mnist
@@ -14,7 +14,14 @@ from docx import Document
 import PyPDF2
 from pptx import Presentation
 import pandas as pd
+import os
 
+def verify_audio_file(audio_path):
+        if not os.path.isfile(audio_path):
+            raise FileNotFoundError(f"File not found: {audio_path}")
+        if not audio_path.lower().endswith(('.wav', '.mp3')):
+            raise ValueError(f"Unsupported file format: {audio_path}")
+        
 class DataEmbedder:
     def __init__(self):
         # Initialize text model and tokenizer
@@ -38,16 +45,25 @@ class DataEmbedder:
         embeddings = self.image_model.predict(img_array)
         return embeddings
 
+    
+
     def embed_audio(self, audio_path):
-        y, sr = librosa.load(audio_path, sr=None)
-        mel_spectrogram = librosa.feature.melspectrogram(y=y, sr=sr)
-        log_mel_spectrogram = librosa.power_to_db(mel_spectrogram, ref=np.max)
-        log_mel_spectrogram = np.expand_dims(log_mel_spectrogram, axis=-1)
-        log_mel_spectrogram = np.expand_dims(log_mel_spectrogram, axis=0)
-        log_mel_spectrogram = tf.image.resize(log_mel_spectrogram, [224, 224])
-        log_mel_spectrogram = np.array(log_mel_spectrogram)
-        embeddings = self.image_model.predict(log_mel_spectrogram)
-        return embeddings
+        try:
+            verify_audio_file(audio_path)
+            y, sr = librosa.load(audio_path, sr=None)
+            print(f"Loaded audio file: {audio_path}, Sample rate: {sr}")
+            mel_spectrogram = librosa.feature.melspectrogram(y=y, sr=sr)
+            log_mel_spectrogram = librosa.power_to_db(mel_spectrogram, ref=np.max)
+            log_mel_spectrogram = np.expand_dims(log_mel_spectrogram, axis=-1)
+            log_mel_spectrogram = np.expand_dims(log_mel_spectrogram, axis=0)
+            log_mel_spectrogram = tf.image.resize(log_mel_spectrogram, [224, 224])
+            log_mel_spectrogram = np.array(log_mel_spectrogram)
+            embeddings = self.image_model.predict(log_mel_spectrogram)
+            return embeddings
+        except Exception as e:
+            print(f"An error occurred while processing the audio file: {e}")
+            return None
+
 
     def embed_video(self, video_path):
         clip = VideoFileClip(video_path)
@@ -169,21 +185,22 @@ embedder = DataEmbedder()
 # image_embedding = embedder.detect_and_embed(response.content)
 # print("Image Embedding:", image_embedding)
 
-# # Embedding audio
-# audio_path = "path_to_audio_file.mp3"  # Replace with your audio file path
-# audio_embedding = embedder.detect_and_embed(audio_path)
-# print("Audio Embedding:", audio_embedding)
+# python multimodal_embedder.py
+# Embedding audio
+audio_path = "hello.wav"  # Replace with your audio file path
+audio_embedding = embedder.detect_and_embed(audio_path)
+print("Audio Embedding:", audio_embedding)
 
 # # Embedding video
 # video_path = "path_to_video_file.mp4"  # Replace with your video file path
 # video_embedding = embedder.detect_and_embed(video_path)
 # print("Video Embedding:", video_embedding)
 
-# Embedding MNIST data
-(mnist_train_images, mnist_train_labels), (mnist_test_images, mnist_test_labels) = mnist.load_data()
-mnist_image = mnist_test_images[0]
-mnist_embedding = embedder.detect_and_embed(mnist_image)
-print("MNIST Embedding:", mnist_embedding)
+# # Embedding MNIST data
+# (mnist_train_images, mnist_train_labels), (mnist_test_images, mnist_test_labels) = mnist.load_data()
+# mnist_image = mnist_test_images[0]
+# mnist_embedding = embedder.detect_and_embed(mnist_image)
+# print("MNIST Embedding:", mnist_embedding)
 
 # # Embedding .txt file
 # txt_file_path = "path_to_text_file.txt"  # Replace with your text file path
