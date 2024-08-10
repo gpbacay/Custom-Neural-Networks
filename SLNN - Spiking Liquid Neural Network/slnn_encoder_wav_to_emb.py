@@ -162,7 +162,7 @@ else:
 
 
 # pip install --upgrade librosa soundfile audioread
-# python slnn_wav_to_emb.py
+# python slnn_encoder_wav_to_emb.py
 """
 Attempting to load audio file: applause.wav
 Loaded with librosa: Sample rate 48000, shape (1199232,)
