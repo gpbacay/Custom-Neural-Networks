@@ -98,4 +98,4 @@ if __name__ == "__main__":
 
 # Convolutional Graph Transformer Neural Network (CGTNN): encoder(IMG to SEQ) to decoder(GRP to CLS)
 # python cgtnn_mnist_seq_to_grp_to_cls.py
-# Test Accuracy: 0.8943
+# Test Accuracy: 0.9342
