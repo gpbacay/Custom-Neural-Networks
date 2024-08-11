@@ -99,6 +99,6 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 
 
-# Spiking Gated Liquid Neural Network (GLNN)
+# Spiking Gated Liquid Neural Network (SGLNN)
 # python sglnn_mnist.py
 # Test Accuracy: 0.9818
