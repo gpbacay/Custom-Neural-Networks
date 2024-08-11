@@ -201,3 +201,4 @@ else:
 
 # Transformer-based SLNN Decoder Model (TSLNN-D)
 # python tslnn_decoder_wav_to_emb.py
+# Test Result: Functional but Decoder is working like the Encoder

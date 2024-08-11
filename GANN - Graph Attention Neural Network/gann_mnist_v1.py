@@ -60,5 +60,5 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 # pip install tensorflow tensorflow-gnn
 # Graph Attention Neural Network (GANN)
-# python gann_mnist.py
+# python gann_mnist_v1.py
 # Test Accuracy: 0.9694

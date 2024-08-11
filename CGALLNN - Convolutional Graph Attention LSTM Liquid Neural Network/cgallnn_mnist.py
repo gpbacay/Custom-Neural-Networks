@@ -52,7 +52,7 @@ class LNNLayer(keras.layers.Layer):
     def compute_output_shape(self, input_shape):
         return (input_shape[0], input_shape[1], self.units) if self.return_sequences else (input_shape[0], self.units)
 
-def create_gcallnn_model(input_shape, lnn_units, lstm_units, output_dim):
+def create_CGALLNN_model(input_shape, lnn_units, lstm_units, output_dim):
     inputs = Input(shape=input_shape)
     
     # CNN layers
@@ -94,7 +94,7 @@ lstm_units = 128
 output_dim = 10
 
 # Create and compile the model
-model = create_gcallnn_model(input_shape, lnn_units, lstm_units, output_dim)
+model = create_CGALLNN_model(input_shape, lnn_units, lstm_units, output_dim)
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # Train the model
@@ -105,6 +105,6 @@ test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=0)
 print(f"Test accuracy: {test_accuracy:.4f}")
 
 
-# Graph Convolutional Attention LSTM Liquid Neural Network (GCALLNN)
-# python gcallnn_mnist.py
+# Convolutional Graph Attention LSTM Liquid Neural Network (CGALLNN)
+# python cgallnn_mnist.py
 # Test Accuracy: 0.9845
