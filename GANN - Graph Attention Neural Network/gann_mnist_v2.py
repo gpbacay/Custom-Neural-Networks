@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Dense, Input, Flatten, TimeDistributed
+from tensorflow.keras.layers import Dense, Input, Flatten, TimeDistributed, MultiHeadAttention, Dropout
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
@@ -52,20 +52,23 @@ class LNNLayer(keras.layers.Layer):
     def compute_output_shape(self, input_shape):
         return (input_shape[0], input_shape[1], self.units) if self.return_sequences else (input_shape[0], self.units)
 
-def create_gcallnn_model(input_shape, lnn_units, output_dim):
+def create_gann_model(input_shape, lnn_units, output_dim, num_heads, ff_dim):
     inputs = Input(shape=input_shape)
     
-    # CNN layers
-    x = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
-    x = MaxPooling2D((2, 2))(x)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-    x = MaxPooling2D((2, 2))(x)
+    # Flatten the input
+    x = TimeDistributed(Flatten())(inputs)
     
-    # Prepare for attention
-    x = TimeDistributed(Flatten())(x)
+    # Multi-head Self Attention
+    x_att = MultiHeadAttention(num_heads=num_heads, key_dim=input_shape[-1])(x, x)
+    x_att = Dropout(0.1)(x_att)
+    
+    # Feed Forward Network after Self-Attention
+    x_ff = Dense(ff_dim, activation='relu')(x_att)
+    x_ff = Dense(x.shape[-1])(x_ff)
+    x_ff = Dropout(0.1)(x_ff)
     
     # Attention layer
-    x = GraphAttentionLayer(64)(x)
+    x = GraphAttentionLayer(64)(x_ff)
     
     # LNN layer
     x = LNNLayer(lnn_units, return_sequences=False)(x)
@@ -86,11 +89,13 @@ y_train, y_test = to_categorical(y_train, 10), to_categorical(y_test, 10)
 
 # Set hyperparameters
 input_shape = (28, 28, 1)
-lnn_units = 512
+lnn_units = 1000
 output_dim = 10
+num_heads = 4
+ff_dim = 64
 
 # Create and compile the model
-model = create_gcallnn_model(input_shape, lnn_units, output_dim)
+model = create_gann_model(input_shape, lnn_units, output_dim, num_heads, ff_dim)
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
 # Train the model
@@ -99,8 +104,6 @@ history = model.fit(x_train, y_train, epochs=10, batch_size=64, validation_split
 # Evaluate the model
 test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=0)
 print(f"Test accuracy: {test_accuracy:.4f}")
-
-
 
 
 # Graph Attention Neural Network (GANN) Version 2
