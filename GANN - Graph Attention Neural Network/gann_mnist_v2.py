@@ -4,6 +4,10 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
+import warnings
+
+# Suppress warnings for cleaner output
+warnings.filterwarnings('ignore')
 
 def efficientnet_block(inputs, filters, expansion_factor, stride):
     expanded_filters = filters * expansion_factor
