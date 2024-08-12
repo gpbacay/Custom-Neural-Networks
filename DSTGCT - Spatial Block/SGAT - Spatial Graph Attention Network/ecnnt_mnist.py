@@ -111,6 +111,6 @@ if __name__ == "__main__":
     main()
 
 
-# Convolutional Graph Attention Network (CGAT)
-# python cgat_mnist.py
-# Test Accuracy: 0.9909
+# Efficient Convolutional Transformer (ECNNT)
+# python ecnnt_mnist.py
+# Test Accuracy: 0.9944

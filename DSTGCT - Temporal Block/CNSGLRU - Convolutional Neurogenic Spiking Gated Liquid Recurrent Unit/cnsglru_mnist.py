@@ -160,4 +160,4 @@ if __name__ == "__main__":
 
 # Convolutional Neurogenic Spiking Gated Liquid Recurrent Unit (CNSGLRU)
 # python cnsglru_mnist.py
-# Test Accuracy: 99.12 (depends on the reservoir min and max dimension)
+# Test Accuracy: 0.9912 (depends on the reservoir min and max dimension)
