@@ -17,6 +17,8 @@ spektral
 torch 
 torchvision
 torch-geometric
+networkx
+mysql-connector-python
 
 
 
