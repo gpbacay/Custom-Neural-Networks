@@ -1,4 +1,3 @@
-import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import GRU, Dense, Input
 from tensorflow.keras.models import Model
