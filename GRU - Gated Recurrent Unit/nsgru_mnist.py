@@ -114,6 +114,6 @@ test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
 print(f"Test Accuracy: {test_accuracy:.4f}")
 
 
-# Neurogenic Spiking Gated Liquid Recurrent Unit (SGLRU)
-# python sglru_mnist.py
+# Neurogenic Spiking Gated Recurrent Unit (NSGRU)
+# python nsgru_mnist.py
 # Test Accuracy: 0.9793
