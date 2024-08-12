@@ -4,7 +4,7 @@ from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 
-# Custom Layer: Neurogenic Spiking Gated Liquid Neural Network Step
+# Custom Layer: Gated Neurogenic Spiking Liquid Neural Network Step
 class GatedNSLNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, gate_weights, leak_rate, spike_threshold, max_reservoir_dim, **kwargs):
         super().__init__(**kwargs)
@@ -59,8 +59,8 @@ def initialize_reservoir(input_dim, reservoir_dim, spectral_radius):
     
     return reservoir_weights, input_weights, gate_weights
 
-# Function to create the Neurogenic Spiking Gated Liquid Neural Network (GNSLNN) model
-def create_gated_nsl_model(input_dim, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
+# Function to create the Gated Neurogenic Spiking Liquid Neural Network (GNSLNN) model
+def create_gnslnn_model(input_dim, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
     # Define the input layer
     inputs = Input(shape=(input_dim,))
     
@@ -125,8 +125,8 @@ output_dim = 10  # Number of output classes
 num_epochs = 10  # Number of training epochs
 batch_size = 64  # Batch size for training
 
-# Create the Neurogenic Spiking Gated Liquid Neural Network (GNSLNN) model
-model = create_gated_nsl_model(input_dim, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
+# Create the Gated Neurogenic Spiking Liquid Neural Network (GNSLNN) model
+model = create_gnslnn_model(input_dim, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
 
 # Define callbacks for early stopping and learning rate reduction
 callbacks = [
@@ -144,7 +144,7 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 
 
-# Neurogenic Spiking Gated Liquid Neural Network (GNSLNN)
+# Gated Neurogenic Spiking Liquid Neural Network (GNSLNN)
 # A counterpart of Spiking Gated Liquid Recurrent Unit (SGLRU)
 # python gnslnn_mnist.py
 # Test Accuracy: 0.9688 (fast)
