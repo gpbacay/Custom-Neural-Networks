@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 class SpikingLNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, leak_rate, max_reservoir_dim, spike_threshold=1.0, **kwargs):
         super().__init__(**kwargs)
+        # Initialize reservoir and input weights as non-trainable variables
         self.reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32, trainable=False)
         self.input_weights = tf.Variable(input_weights, dtype=tf.float32, trainable=False)
         self.leak_rate = leak_rate
@@ -19,18 +20,25 @@ class SpikingLNNStep(tf.keras.layers.Layer):
         return (self.max_reservoir_dim,)
 
     def call(self, inputs, states):
+        # Retrieve the previous state from the states tuple
         prev_state = states[0][:, :self.reservoir_weights.shape[0]]
+        
+        # Compute the input and reservoir parts of the state update
         input_part = tf.matmul(inputs, self.input_weights, transpose_b=True)
         reservoir_part = tf.matmul(prev_state, self.reservoir_weights, transpose_b=True)
+        
+        # Update the state with reservoir dynamics, applying a leak rate and tanh activation
         state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_part + reservoir_part)
 
-        # Spiking dynamics: Apply a threshold to produce discrete spikes
+        # Neurogenic Dynamics: Apply a threshold to produce discrete spikes
         spikes = tf.cast(tf.greater(state, self.spike_threshold), dtype=tf.float32)
+        # Adjust state based on spikes
         state = tf.where(spikes > 0, state - self.spike_threshold, state)
 
-        # Ensure the state size matches the max reservoir size
+        # Ensure the state size matches the maximum reservoir dimension
         active_size = tf.shape(state)[-1]
         padded_state = tf.concat([state, tf.zeros([tf.shape(state)[0], self.max_reservoir_dim - active_size])], axis=1)
+        
         return padded_state, [padded_state]
 
 # Initialize the reservoir weights
@@ -40,8 +48,8 @@ def initialize_reservoir(input_dim, reservoir_dim, spectral_radius, max_reservoi
     input_weights = np.random.randn(reservoir_dim, input_dim) * 0.1
     return reservoir_weights, input_weights
 
-# Spiking Neurogenic Liquid Neural Network (SNLNN) Model
-def create_snl_model(input_dim, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim):
+# Neurogenic Spiking Liquid Neural Network (NSLNN) Model
+def create_nsl_model(input_dim, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim):
     inputs = Input(shape=(input_dim,))
 
     # Initialize Spiking LNN weights
@@ -53,11 +61,11 @@ def create_snl_model(input_dim, reservoir_dim, spectral_radius, leak_rate, max_r
         return_sequences=True
     )
 
-    def apply_spiking_lnn(x):
+    def apply_nslnn(x):
         lnn_output = lnn_layer(tf.expand_dims(x, axis=1))
         return Flatten()(lnn_output)
 
-    lnn_output = Lambda(apply_spiking_lnn)(inputs)
+    lnn_output = Lambda(apply_nslnn)(inputs)
 
     # Additional layers for improved performance
     x = Dense(128, activation='relu')(lnn_output)
@@ -96,8 +104,8 @@ output_dim = 10
 num_epochs = 10
 batch_size = 64
 
-# Create Spiking Neurogenic Liquid Neural Network (SNLNN) model
-model = create_snl_model(input_dim, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim)
+# Create Neurogenic Spiking Liquid Neural Network (NSLNN) model
+model = create_nsl_model(input_dim, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim)
 
 # Compile and train the model
 callbacks = [
@@ -113,6 +121,7 @@ test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
 print(f"Test Accuracy: {test_accuracy:.4f}")
 
 
-# Spiking Neurogenic Liquid Nueral Network (SNLNN)
-# python snlnn_mnist.py
-# Test Accuracy: 0.9459
+
+# Neurogenic Spiking Liquid Nueral Network (NSLNN)
+# python nslnn_mnist.py
+# Test Accuracy: 0.9464
