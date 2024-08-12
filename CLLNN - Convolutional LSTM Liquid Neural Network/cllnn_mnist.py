@@ -126,6 +126,9 @@ def main():
 
     test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
     print(f"Test Accuracy: {test_accuracy:.4f}")
+    
+    # Display the model summary
+    model.summary()
 
 if __name__ == "__main__":
     main()

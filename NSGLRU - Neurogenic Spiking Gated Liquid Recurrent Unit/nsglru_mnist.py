@@ -4,7 +4,7 @@ from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 
-# Custom Layer: Neurogenic Spiking Gated Liquid Recurrent Unit (NSGLRU) Step
+# Custom Layer: Neurogenic Spiking Gated Liquid Recurrent Unit (NSGLRU)
 class NSGLRUCell(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, gate_weights, leak_rate, spike_threshold, max_reservoir_dim, **kwargs):
         super().__init__(**kwargs)
@@ -18,12 +18,12 @@ class NSGLRUCell(tf.keras.layers.Layer):
 
     @property
     def state_size(self):
-        return (self.max_reservoir_dim,)
+        return self.max_reservoir_dim,
 
     def call(self, inputs, states):
         prev_state = states[0][:, :self.reservoir_weights.shape[0]]
         
-        # Compute input, reservoir, and gate parts of the state update
+        # Compute the parts of the state update
         input_part = tf.matmul(inputs, self.input_weights, transpose_b=True)
         reservoir_part = tf.matmul(prev_state, self.reservoir_weights, transpose_b=True)
         gate_part = tf.matmul(inputs, self.gate_weights, transpose_b=True)
@@ -31,7 +31,7 @@ class NSGLRUCell(tf.keras.layers.Layer):
         # Split gate activations into input, forget, and output gates
         i_gate, f_gate, o_gate = tf.split(tf.sigmoid(gate_part), 3, axis=-1)
 
-        # Update state with gating and reservoir dynamics
+        # Update the state with gating and reservoir dynamics
         state = (1 - self.leak_rate) * (f_gate * prev_state) + self.leak_rate * tf.tanh(i_gate * (input_part + reservoir_part))
         state = o_gate * state
 
@@ -45,9 +45,8 @@ class NSGLRUCell(tf.keras.layers.Layer):
         
         return padded_state, [padded_state]
 
-# Function to initialize reservoir, input, and gate weights
 def initialize_reservoir(input_dim, reservoir_dim, spectral_radius):
-    # Initialize reservoir weights with random values
+    # Initialize reservoir weights with random values and scale by spectral radius
     reservoir_weights = np.random.randn(reservoir_dim, reservoir_dim)
     reservoir_weights *= spectral_radius / np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
     
@@ -59,7 +58,6 @@ def initialize_reservoir(input_dim, reservoir_dim, spectral_radius):
     
     return reservoir_weights, input_weights, gate_weights
 
-# Function to create the Neurogenic Spiking Gated Liquid Recurrent Unit (NSGLRU) model
 def create_NSGLRU_model(input_dim, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
     # Define the input layer
     inputs = Input(shape=(input_dim,))
@@ -94,54 +92,59 @@ def create_NSGLRU_model(input_dim, reservoir_dim, spectral_radius, leak_rate, sp
     model = tf.keras.Model(inputs, outputs)
     return model
 
-# Function to preprocess MNIST data
 def preprocess_data(x):
     # Normalize pixel values to [0, 1]
     x = x.astype(np.float32) / 255.0
     # Flatten the 28x28 images to vectors of size 784
     return x.reshape(-1, 28 * 28)
 
-# Load and preprocess MNIST dataset
-(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
-x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
+def main():
+    # Load and preprocess MNIST dataset
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
 
-x_train = preprocess_data(x_train)
-x_val = preprocess_data(x_val)
-x_test = preprocess_data(x_test)
+    x_train = preprocess_data(x_train)
+    x_val = preprocess_data(x_val)
+    x_test = preprocess_data(x_test)
 
-# Convert class labels to one-hot encoded vectors
-y_train = tf.keras.utils.to_categorical(y_train)
-y_val = tf.keras.utils.to_categorical(y_val)
-y_test = tf.keras.utils.to_categorical(y_test)
+    # Convert class labels to one-hot encoded vectors
+    y_train = tf.keras.utils.to_categorical(y_train)
+    y_val = tf.keras.utils.to_categorical(y_val)
+    y_test = tf.keras.utils.to_categorical(y_test)
 
-# Set hyperparameters
-input_dim = 28 * 28
-reservoir_dim = 500  # Dimension of the reservoir
-max_reservoir_dim = 1000  # Maximum dimension of the reservoir
-spectral_radius = 1.5  # Spectral radius for reservoir scaling
-leak_rate = 0.3  # Leak rate for state update
-spike_threshold = 0.5  # Threshold for spike generation
-output_dim = 10  # Number of output classes
-num_epochs = 10  # Number of training epochs
-batch_size = 64  # Batch size for training
+    # Set hyperparameters
+    input_dim = 28 * 28
+    reservoir_dim = 500  # Dimension of the reservoir
+    max_reservoir_dim = 1000  # Maximum dimension of the reservoir
+    spectral_radius = 1.5  # Spectral radius for reservoir scaling
+    leak_rate = 0.3  # Leak rate for state update
+    spike_threshold = 0.5  # Threshold for spike generation
+    output_dim = 10  # Number of output classes
+    num_epochs = 10  # Number of training epochs
+    batch_size = 64  # Batch size for training
 
-# Create the NSGLRU model
-model = create_NSGLRU_model(input_dim, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
+    # Create the NSGLRU model
+    model = create_NSGLRU_model(input_dim, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
 
-# Define callbacks for early stopping and learning rate reduction
-callbacks = [
-    EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True),
-    ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
-]
+    # Define callbacks for early stopping and learning rate reduction
+    callbacks = [
+        EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True),
+        ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
+    ]
 
-# Compile and train the model
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-model.fit(x_train, y_train, epochs=num_epochs, batch_size=batch_size, validation_data=(x_val, y_val), callbacks=callbacks)
+    # Compile and train the model
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    model.fit(x_train, y_train, epochs=num_epochs, batch_size=batch_size, validation_data=(x_val, y_val), callbacks=callbacks)
 
-# Evaluate the model on the test set
-test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
-print(f"Test Accuracy: {test_accuracy:.4f}")
+    # Evaluate the model on the test set
+    test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
+    print(f"Test Accuracy: {test_accuracy:.4f}")
 
+    # Display the model summary
+    model.summary()
+
+if __name__ == "__main__":
+    main()
 
 
 

@@ -50,9 +50,6 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 # Display the model summary
 model.summary()
 
-
-
-
 # Standard Gated Recurrent Unit (GRU)
 # python gru_mnist.py
 # Test Accuracy: 0.9855
