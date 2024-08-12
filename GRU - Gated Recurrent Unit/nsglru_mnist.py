@@ -147,4 +147,4 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 # Neurogenic Spiking Gated Liquid Recurrent Unit (NSGLRU)
 # python nsglru_mnist.py
-# Test Accuracy: 0.9704 (depends on the reservoir min and max dimension)
+# Test Accuracy: 0.9675 (depends on the reservoir min and max dimension)
