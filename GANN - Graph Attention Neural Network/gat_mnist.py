@@ -99,6 +99,7 @@ if __name__ == "__main__":
 
 
 
-# Graph Attention Neural Network (GANN)
-# python gann_mnist.py
-# Test Accuracy: 
+# Graph Attention Neural Network (GAT)
+# python gat_mnist.py
+# Test Accuracy: (very slow)
+# Needs Spatial Graph Attention Mechanism

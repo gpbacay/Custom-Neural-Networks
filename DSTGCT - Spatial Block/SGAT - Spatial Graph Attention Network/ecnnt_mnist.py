@@ -114,3 +114,4 @@ if __name__ == "__main__":
 # Efficient Convolutional Transformer (ECNNT)
 # python ecnnt_mnist.py
 # Test Accuracy: 0.9944
+# Needs Spatial Grapp Attention Mechanism
