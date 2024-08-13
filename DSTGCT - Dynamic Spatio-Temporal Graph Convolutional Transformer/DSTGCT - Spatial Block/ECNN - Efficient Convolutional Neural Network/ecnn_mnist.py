@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, MaxPooling2D, GlobalAveragePooling2D, Dropout
+from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
@@ -26,7 +26,7 @@ def efficientnet_block(inputs, filters, expansion_factor, stride):
 def create_ecnn_model(input_shape, output_dim):
     inputs = Input(shape=input_shape)
     
-    # EfficientNet-like Convolutional layers for feature extraction
+    # EfficientNet Convolutional layers for feature extraction
     x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False)(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)

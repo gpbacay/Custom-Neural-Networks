@@ -125,4 +125,4 @@ else:
 
 # Graph Neural Network (GNN)
 # python gnn_sql_to_emb_v2.py
-# Remarks: Error
+# Remarks: Error (The problem is in the data and not the model)

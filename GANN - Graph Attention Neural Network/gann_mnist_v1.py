@@ -58,7 +58,6 @@ test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=0)
 print(f"Test Accuracy: {test_accuracy:.4f}")
 
 
-# pip install tensorflow tensorflow-gnn
 # Graph Attention Neural Network (GANN)
 # python gann_mnist_v1.py
 # Test Accuracy: 0.9694
