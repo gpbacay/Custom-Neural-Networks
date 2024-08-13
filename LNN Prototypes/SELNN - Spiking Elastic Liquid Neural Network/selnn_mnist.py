@@ -139,3 +139,4 @@ if __name__ == "__main__":
 # python selnn_mnist.py
 # Test Accuracy: 0.9694
 # Needs improvement, usage of adding and prunning connections while training
+# Key for self-aware neural networks (elastic neural network)
