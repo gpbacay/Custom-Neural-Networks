@@ -113,4 +113,4 @@ if __name__ == "__main__":
 
 # Efficient CNN Transformer (ECNNT)
 # python ecnnt_mnist.py
-# Test Accuracy: 0.9909
+# Test Accuracy: 0.9947

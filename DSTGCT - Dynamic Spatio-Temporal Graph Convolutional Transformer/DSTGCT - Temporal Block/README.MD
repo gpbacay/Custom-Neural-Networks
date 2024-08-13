@@ -1,17 +1,14 @@
-# **Spatial Block**
+# **Temporal Block**
 
-The Spatial Block focuses on capturing spatial relationships and interactions between nodes in a graph. The following neural networks are effective for this block:
+The Temporal Block focuses on capturing temporal dynamics and changes over time. For this block, the following neural networks are well-suited:
 
-- **Graph Convolutional Networks (GCNs)**: GCNs are designed to aggregate information from neighboring nodes and can effectively capture local graph structures.
+1. **Recurrent Neural Networks (RNNs)**: Traditional RNNs, including Long Short-Term Memory (LSTM) and Gated Recurrent Units (GRUs), are effective at learning temporal dependencies and sequential patterns in time series data.
 
-    - **Standard GCN**: Aggregates information from neighbors using a fixed convolutional kernel.
+2. **LSTM (Long Short-Term Memory)**: Addresses vanishing gradient problems and is good for learning long-term dependencies.
+3. **GRU (Gated Recurrent Unit)**: Simplifies LSTM by combining the forget and input gates into a single update gate, improving efficiency while retaining performance.
 
-- **Graph Attention Networks (GATs)**: GATs use attention mechanisms to weigh the importance of neighboring nodes, allowing for more flexible and adaptive aggregation.
+4. **Temporal Convolutional Networks (TCNs)**: TCNs use convolutional layers to capture temporal patterns and can be more efficient than RNNs for certain tasks. They are designed to handle long-range dependencies and parallelize computations.
 
-    - **Self-Attention Mechanism**: Weighs the influence of each neighbor dynamically based on their relevance.
+5. **Dilated Convolutions**: Enhance TCNs by allowing for a larger receptive field without increasing the number of parameters significantly.
 
-- **Graph Isomorphism Networks (GINs)**: GINs are designed to capture more expressive node representations by using more powerful aggregation functions compared to traditional GCNs.
-
-    - **Sum Aggregation**: Utilizes a sum-based aggregation approach to improve expressiveness.
-
-- **Spatial Graph Convolutional Networks (SGCNs)**: SGCNs focus on spatial relationships in graph structures, often incorporating techniques to capture spatial features more effectively.
+6. **Spiking Neural Networks (SNNs)**: For tasks requiring precise temporal resolution, SNNs model the temporal dynamics of spikes and are well-suited for capturing high-resolution temporal patterns.
