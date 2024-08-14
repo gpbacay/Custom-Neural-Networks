@@ -177,44 +177,33 @@ def main():
     )
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True),
-        ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-5),
-        gradual_add_neurons_and_prune_callback
+        gradual_add_neurons_and_prune_callback,
+        EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True),
+        ReduceLROnPlateau(monitor='val_loss', patience=2, factor=0.5)
     ]
 
     # Compile and train the model
-    optimizer = tf.keras.optimizers.Adam(learning_rate=0.001, clipnorm=1.0)
-    model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     
-    history = model.fit(x_train, y_train, epochs=num_epochs, batch_size=batch_size, 
-                        validation_data=(x_val, y_val), callbacks=callbacks, verbose=1)
+    history = model.fit(
+        x_train, y_train,
+        epochs=num_epochs,
+        batch_size=batch_size,
+        validation_data=(x_val, y_val),
+        callbacks=callbacks
+    )
 
-    # Evaluate the model on the test set
-    test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
-    print(f"Test Accuracy: {test_accuracy:.4f}")
-
-    # Display the model summary
-    model.summary()
+    # Evaluate the model
+    test_loss, test_acc = model.evaluate(x_test, y_test)
+    print(f"Test accuracy: {test_acc:.4f}")
 
     # Plot training history
-    plt.figure(figsize=(12, 4))
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['accuracy'], label='Train Accuracy')
-    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
-    plt.title('Model Accuracy')
+    plt.plot(history.history['accuracy'], label='accuracy')
+    plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
-    plt.legend()
-
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['loss'], label='Train Loss')
-    plt.plot(history.history['val_loss'], label='Validation Loss')
-    plt.title('Model Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-
-    plt.tight_layout()
+    plt.ylim([0, 1])
+    plt.legend(loc='lower right')
     plt.show()
 
 if __name__ == "__main__":
@@ -223,8 +212,7 @@ if __name__ == "__main__":
 
 
 
+
 # Spiking Elastic Liquid Nueral Network (SELNN)
 # python selnn_mnist.py
-# Test Accuracy: 0.9015
-# Needs improvement, usage of adding and prunning connections while training
-# Key for self-aware neural networks (elastic neural network)
+# Test Accuracy: 0.9061
