@@ -104,11 +104,13 @@ class GradualAddNeuronsAndPruneCallback(Callback):
         self.pruning_threshold = pruning_threshold
 
     def on_epoch_end(self, epoch, logs=None):
+        # Add neurons
         if epoch < self.total_epochs - 1:
             print(f" - Adding {self.neurons_per_addition} neurons at epoch {epoch + 1}")
             self.selnn_step_layer.add_neurons(self.neurons_per_addition)
         
-        if (epoch + 1) % 1 == 0:
+        # Prune connections
+        if (epoch + 1) % 1 == 0:  # Prune every epoch (or adjust as needed)
             print(f" - Pruning connections at epoch {epoch + 1}")
             self.selnn_step_layer.prune_connections(self.pruning_threshold)
 
@@ -213,6 +215,7 @@ if __name__ == "__main__":
     main()
 
 
+
 # Spiking Elastic Liquid Nueral Network (SELNN)
 # python selnn_mnist.py
-# Test Accuracy: 0.9067
+# Test Accuracy: 0.9099
