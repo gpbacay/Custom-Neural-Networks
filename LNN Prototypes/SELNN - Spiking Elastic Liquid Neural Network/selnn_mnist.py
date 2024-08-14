@@ -234,4 +234,4 @@ if __name__ == '__main__':
 
 # Spiking Elastic Liquid Nueral Network (SELNN)
 # python selnn_mnist.py
-# Test Accuracy: 0.9099
+# Test Accuracy: 0.9078
