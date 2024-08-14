@@ -104,22 +104,26 @@ class GradualAddNeuronsAndPruneCallback(Callback):
         self.pruning_threshold = pruning_threshold
 
     def on_epoch_end(self, epoch, logs=None):
-        # Add neurons
         if epoch < self.total_epochs - 1:
             print(f" - Adding {self.neurons_per_addition} neurons at epoch {epoch + 1}")
             self.selnn_step_layer.add_neurons(self.neurons_per_addition)
         
-        # Prune connections
-        if (epoch + 1) % 5 == 0:  # Prune every 5 epochs (or adjust as needed)
+        if (epoch + 1) % 1 == 0:
             print(f" - Pruning connections at epoch {epoch + 1}")
             self.selnn_step_layer.prune_connections(self.pruning_threshold)
 
 def create_selnn_model(input_dim, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
     inputs = Input(shape=(input_dim,))
-    
     expanded_inputs = ExpandDimsLayer(axis=1)(inputs)
 
-    selnn_step_layer = SpikingElasticLNNStep(initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim)
+    selnn_step_layer = SpikingElasticLNNStep(
+        initial_reservoir_size=initial_reservoir_size,
+        input_dim=input_dim,
+        spectral_radius=spectral_radius,
+        leak_rate=leak_rate,
+        spike_threshold=spike_threshold,
+        max_reservoir_dim=max_reservoir_dim
+    )
     rnn_layer = tf.keras.layers.RNN(selnn_step_layer, return_sequences=False)
 
     selnn_output = rnn_layer(expanded_inputs)
@@ -131,7 +135,6 @@ def create_selnn_model(input_dim, initial_reservoir_size, spectral_radius, leak_
     x = Dropout(0.5)(x)
 
     outputs = Dense(output_dim, activation='softmax')(x)
-
     model = tf.keras.Model(inputs, outputs)
     return model, selnn_step_layer
 
@@ -139,7 +142,6 @@ def preprocess_data(x):
     return x.astype(np.float32) / 255.0
 
 def main():
-    # Load and preprocess MNIST dataset
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
 
@@ -151,7 +153,6 @@ def main():
     y_val = tf.keras.utils.to_categorical(y_val)
     y_test = tf.keras.utils.to_categorical(y_test)
 
-    # Set hyperparameters
     input_dim = 28 * 28
     initial_reservoir_size = 500
     final_reservoir_size = 1000
@@ -162,12 +163,18 @@ def main():
     output_dim = 10
     num_epochs = 10
     batch_size = 64
-    pruning_threshold = 0.01  # Set appropriate pruning threshold
+    pruning_threshold = 0.01
 
-    # Create the Spiking Elastic Liquid Neural Network (SELNN) model
-    model, selnn_step_layer = create_selnn_model(input_dim, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
+    model, selnn_step_layer = create_selnn_model(
+        input_dim=input_dim,
+        initial_reservoir_size=initial_reservoir_size,
+        spectral_radius=spectral_radius,
+        leak_rate=leak_rate,
+        spike_threshold=spike_threshold,
+        max_reservoir_dim=max_reservoir_dim,
+        output_dim=output_dim
+    )
 
-    # Define callbacks
     gradual_add_neurons_and_prune_callback = GradualAddNeuronsAndPruneCallback(
         selnn_step_layer=selnn_step_layer,
         total_epochs=num_epochs,
@@ -182,7 +189,6 @@ def main():
         ReduceLROnPlateau(monitor='val_loss', patience=2, factor=0.5)
     ]
 
-    # Compile and train the model
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     
     history = model.fit(
@@ -193,24 +199,18 @@ def main():
         callbacks=callbacks
     )
 
-    # Evaluate the model
-    test_loss, test_acc = model.evaluate(x_test, y_test)
-    print(f"Test accuracy: {test_acc:.4f}")
+    test_loss, test_accuracy = model.evaluate(x_test, y_test)
+    print(f"Test accuracy: {test_accuracy:.4f}")
 
-    # Plot training history
-    plt.plot(history.history['accuracy'], label='accuracy')
-    plt.plot(history.history['val_accuracy'], label = 'val_accuracy')
-    plt.xlabel('Epoch')
+    plt.plot(history.history['accuracy'], label='Training Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
-    plt.ylim([0, 1])
-    plt.legend(loc='lower right')
+    plt.legend()
     plt.show()
 
 if __name__ == "__main__":
     main()
-
-
-
 
 
 # Spiking Elastic Liquid Nueral Network (SELNN)
