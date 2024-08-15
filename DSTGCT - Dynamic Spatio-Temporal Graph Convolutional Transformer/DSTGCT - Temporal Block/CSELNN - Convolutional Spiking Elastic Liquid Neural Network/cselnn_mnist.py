@@ -253,8 +253,6 @@ if __name__ == '__main__':
     main()
 
 
-
-
 # Convolutional Spiking Elastic Liquid Nueral Network (CSELNN)
 # python cselnn_mnist.py
 # Test Accuracy: 0.9914 (Very Impressive)
