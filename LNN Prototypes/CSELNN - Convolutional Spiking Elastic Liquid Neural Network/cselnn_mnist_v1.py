@@ -139,25 +139,18 @@ def create_selnn_model(input_shape, initial_reservoir_size, spectral_radius, lea
     rnn_layer = tf.keras.layers.RNN(selnn_step_layer, return_sequences=False)
     selnn_output = rnn_layer(x)
     
-    # Build the readout layers
-    x = readout_layer(selnn_output, output_dim)
-    
-    model = tf.keras.Model(inputs, x)
-    return model, selnn_step_layer
-
-# Function to Build Readout Layers
-def readout_layer(x, output_dim):
-    """Build the readout layers for classification."""
-    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01))(x)
+    # Build the rest of the model
+    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01))(selnn_output)
     x = Dropout(0.5)(x)
     x = Dense(64, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01))(x)
     x = Dropout(0.5)(x)
     outputs = Dense(output_dim, activation='softmax')(x)
-    return outputs
+    
+    model = tf.keras.Model(inputs, outputs)
+    return model, selnn_step_layer
 
 # Function to Preprocess Data
 def preprocess_data(x):
-    """Preprocess the data."""
     return x.astype(np.float32) / 255.0
 
 # Main Function to Run the Model
@@ -227,8 +220,6 @@ def main():
 
     # Plot training history
     plt.figure(figsize=(12, 5))
-    
-    # Plot Loss
     plt.subplot(1, 2, 1)
     plt.plot(history.history['loss'], label='Training Loss')
     plt.plot(history.history['val_loss'], label='Validation Loss')
@@ -237,7 +228,6 @@ def main():
     plt.ylabel('Loss')
     plt.title('Loss over Epochs')
     
-    # Plot Accuracy
     plt.subplot(1, 2, 2)
     plt.plot(history.history['accuracy'], label='Training Accuracy')
     plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
@@ -258,3 +248,4 @@ if __name__ == '__main__':
 # Convolutional Spiking Elastic Liquid Nueral Network (CSELNN)
 # python cselnn_mnist.py
 # Test Accuracy: 0.9914 (Very Impressive)
+
