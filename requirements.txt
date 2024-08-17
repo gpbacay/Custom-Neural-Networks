@@ -19,6 +19,8 @@ torchvision
 torch-geometric
 networkx
 mysql-connector-python
+tensorflow-probability
+
 
 
 

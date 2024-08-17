@@ -1,9 +1,13 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Input, Dropout, Flatten, Conv2D, MaxPooling2D, Layer, Reshape
+from tensorflow.keras.layers import Dense, Input, Dropout, Flatten, Conv2D, MaxPooling2D, Layer, Reshape, Attention
 from tensorflow.keras.callbacks import Callback, EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+import warnings
+
+# Suppress warnings for cleaner output
+warnings.filterwarnings('ignore')
 
 # Custom Keras Layer for Spiking Elastic Liquid Neural Network (SELNN) Step
 class SpikingElasticLNNStep(tf.keras.layers.Layer):
@@ -108,8 +112,8 @@ class GradualAddNeuronsAndPruneCallback(Callback):
             print(f" - Pruning connections at epoch {epoch + 1}")
             self.selnn_step_layer.prune_connections(self.pruning_threshold)
 
-# Function to Create the SELNN Model
-def create_selnn_model(input_shape, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
+# Function to Create the SELNN Model with Attention
+def create_selnn_with_attention_model(input_shape, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
     inputs = Input(shape=input_shape)
     
     # Convolutional layers
@@ -123,8 +127,14 @@ def create_selnn_model(input_shape, initial_reservoir_size, spectral_radius, lea
     # Flatten the output
     x = Flatten()(x)
     
-    # Reshape the data for RNN layer (simulate sequence length of 1)
+    # Reshape the data for RNN layer
     x = Reshape((1, x.shape[1]))(x)  # Reshape to (batch_size, sequence_length, features)
+    
+    # Apply self-attention
+    query = x
+    value = x
+    key = x
+    attention = Attention()([query, key, value])
     
     # Initialize SELNN layer
     selnn_step_layer = SpikingElasticLNNStep(
@@ -137,7 +147,7 @@ def create_selnn_model(input_shape, initial_reservoir_size, spectral_radius, lea
     )
     
     rnn_layer = tf.keras.layers.RNN(selnn_step_layer, return_sequences=False)
-    selnn_output = rnn_layer(x)
+    selnn_output = rnn_layer(attention)
     
     # Build the readout layers
     x = readout_layer(selnn_output, output_dim)
@@ -168,89 +178,66 @@ def main():
     x_train = preprocess_data(x_train).reshape(-1, 28, 28, 1)
     x_val = preprocess_data(x_val).reshape(-1, 28, 28, 1)
     x_test = preprocess_data(x_test).reshape(-1, 28, 28, 1)
-    y_train = tf.keras.utils.to_categorical(y_train)
-    y_val = tf.keras.utils.to_categorical(y_val)
-    y_test = tf.keras.utils.to_categorical(y_test)
-
-    # Define model parameters
+    
+    # Model parameters
     input_shape = (28, 28, 1)
-    initial_reservoir_size = 500
-    final_reservoir_size = 1000
-    max_reservoir_dim = 1000
+    initial_reservoir_size = 100
     spectral_radius = 0.9
-    leak_rate = 0.1
+    leak_rate = 0.2
     spike_threshold = 0.5
+    max_reservoir_dim = 1000
     output_dim = 10
-    num_epochs = 10
-    batch_size = 64
-    pruning_threshold = 0.01
 
-    # Create and compile model
-    model, selnn_step_layer = create_selnn_model(
-        input_shape=input_shape,
-        initial_reservoir_size=initial_reservoir_size,
-        spectral_radius=spectral_radius,
-        leak_rate=leak_rate,
-        spike_threshold=spike_threshold,
-        max_reservoir_dim=max_reservoir_dim,
-        output_dim=output_dim
+    # Create and compile the model
+    model, selnn_step_layer = create_selnn_with_attention_model(
+        input_shape,
+        initial_reservoir_size,
+        spectral_radius,
+        leak_rate,
+        spike_threshold,
+        max_reservoir_dim,
+        output_dim
     )
     
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    
-    # Define callbacks
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+
+    # Callbacks
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True),
-        ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2, min_lr=1e-6),
         GradualAddNeuronsAndPruneCallback(
-            selnn_step_layer=selnn_step_layer,
-            total_epochs=num_epochs,
+            selnn_step_layer,
+            total_epochs=10,
             initial_neurons=initial_reservoir_size,
-            final_neurons=final_reservoir_size,
-            pruning_threshold=pruning_threshold
-        )
+            final_neurons=max_reservoir_dim,
+            pruning_threshold=0.1
+        ),
+        EarlyStopping(monitor='val_loss', patience=3),
+        ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
     ]
-    
+
     # Train the model
     history = model.fit(
         x_train, y_train,
-        epochs=num_epochs,
-        batch_size=batch_size,
+        epochs=10,
+        batch_size=64,
         validation_data=(x_val, y_val),
         callbacks=callbacks
     )
 
     # Evaluate the model
     test_loss, test_accuracy = model.evaluate(x_test, y_test)
-    print(f'Test Loss: {test_loss:.4f}')
-    print(f'Test Accuracy: {test_accuracy:.4f}')
+    print(f"Test Accuracy: {test_accuracy:.4f}")
 
     # Plot training history
-    plt.figure(figsize=(12, 5))
-    
-    # Plot Loss
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['loss'], label='Training Loss')
-    plt.plot(history.history['val_loss'], label='Validation Loss')
-    plt.legend()
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Loss over Epochs')
-    
-    # Plot Accuracy
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['accuracy'], label='Training Accuracy')
-    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
-    plt.legend()
+    plt.plot(history.history['accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Val Accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
-    plt.title('Accuracy over Epochs')
-    
-    plt.tight_layout()
+    plt.legend()
     plt.show()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
+
 
 
 
@@ -259,4 +246,4 @@ if __name__ == '__main__':
 
 # Spatio-Temporal Convolutional Spiking Elastic Liquid Nueral Network (ST-CSELNN)
 # python st_cselnn_mnist.py
-# Test Accuracy:
+# Test Accuracy: 0.9916
