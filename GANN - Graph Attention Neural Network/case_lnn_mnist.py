@@ -244,6 +244,6 @@ if __name__ == "__main__":
 
 
 
-# Spatio-Temporal Convolutional Spiking Elastic Liquid Nueral Network (ST-CSELNN)
-# python st_cselnn_mnist.py
+# Convolutional Attention Spiking Elastic Liquid Nueral Network (CASE-LNN)
+# python case_lnn_mnist.py
 # Test Accuracy: 0.9916
