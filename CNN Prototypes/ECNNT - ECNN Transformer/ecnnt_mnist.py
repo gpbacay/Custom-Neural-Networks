@@ -26,7 +26,7 @@ def efficientnet_block(inputs, filters, expansion_factor, stride):
 def create_ecnn_transformer_model(input_shape, output_dim, d_model=64, num_heads=4):
     inputs = Input(shape=input_shape)
     
-    # EfficientNet-like Convolutional layers for feature extraction
+    # EfficientNet-based Convolutional layers for feature extraction
     x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False)(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
@@ -38,7 +38,7 @@ def create_ecnn_transformer_model(input_shape, output_dim, d_model=64, num_heads
     x = GlobalAveragePooling2D()(x)
     x = Reshape((1, x.shape[-1]))(x)  # Add seq_len dimension for MultiHeadAttention
     
-    # Transformer-like Multi-Head Attention layer
+    # Transformer-based Multi-Head Attention layer
     attention_output = MultiHeadAttention(num_heads=num_heads, key_dim=d_model)(x, x)
     x = LayerNormalization(epsilon=1e-6)(x + attention_output)
     
