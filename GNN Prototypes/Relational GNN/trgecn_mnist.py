@@ -17,7 +17,7 @@ class RelationalGCNLayer(tf.keras.layers.Layer):
         self.activation = tf.keras.activations.get(activation)
     
     def build(self, input_shape):
-        self.dense_layers = [tf.keras.layers.Dense(self.units) for _ in range(self.num_relations)]
+        self.dense_layers = [tf.keras.layers.Dense(self.units, kernel_regularizer=tf.keras.regularizers.l2(0.01)) for _ in range(self.num_relations)]
     
     def call(self, inputs):
         x = inputs
@@ -47,13 +47,13 @@ class RGCN(tf.keras.layers.Layer):
 # EfficientNet-like block
 def efficientnet_block(inputs, filters, expansion_factor, stride):
     expanded_filters = filters * expansion_factor
-    x = Conv2D(expanded_filters, kernel_size=1, padding='same', use_bias=False)(inputs)
+    x = Conv2D(expanded_filters, kernel_size=1, padding='same', use_bias=False, kernel_regularizer=tf.keras.regularizers.l2(0.01))(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
-    x = Conv2D(expanded_filters, kernel_size=3, padding='same', strides=stride, use_bias=False)(x)
+    x = Conv2D(expanded_filters, kernel_size=3, padding='same', strides=stride, use_bias=False, kernel_regularizer=tf.keras.regularizers.l2(0.01))(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
-    x = Conv2D(filters, kernel_size=1, padding='same', use_bias=False)(x)
+    x = Conv2D(filters, kernel_size=1, padding='same', use_bias=False, kernel_regularizer=tf.keras.regularizers.l2(0.01))(x)
     x = tf.keras.layers.BatchNormalization()(x)
     if stride == 1 and inputs.shape[-1] == x.shape[-1]:
         x = tf.keras.layers.Add()([inputs, x])
@@ -64,7 +64,7 @@ def create_trgecn_model(input_shape, output_dim, units, num_heads=4, d_model=64)
     inputs = Input(shape=input_shape)
     
     # EfficientNet-like Convolutional layers for feature extraction
-    x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False)(inputs)
+    x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False, kernel_regularizer=tf.keras.regularizers.l2(0.01))(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
     x = efficientnet_block(x, 16, expansion_factor=1, stride=1)
@@ -86,7 +86,7 @@ def create_trgecn_model(input_shape, output_dim, units, num_heads=4, d_model=64)
     graph_output = rgcn(x)
     
     # Final classification layers
-    x = Dense(128, activation='relu')(graph_output)
+    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(0.01))(graph_output)
     x = Dropout(0.5)(x)
     outputs = Dense(output_dim, activation='softmax')(x)
 
@@ -121,27 +121,29 @@ def main():
 
     (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_and_preprocess_data()
     
-    # Data augmentation
-    datagen = tf.keras.preprocessing.image.ImageDataGenerator(
-        rotation_range=10,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        shear_range=0.1,
-        zoom_range=0.1,
-        horizontal_flip=False,
-        fill_mode='nearest'
-    )
-    datagen.fit(x_train)
+    # Data augmentation using tf.data API
+    def augment_image(image, label):
+        image = tf.image.random_flip_left_right(image)
+        image = tf.image.random_flip_up_down(image)
+        image = tf.image.random_contrast(image, 0.8, 1.2)
+        image = tf.image.random_brightness(image, 0.2)
+        return image, label
+    
+    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+    train_dataset = train_dataset.shuffle(buffer_size=10000)
+    train_dataset = train_dataset.map(augment_image)
+    train_dataset = train_dataset.batch(batch_size)
+    train_dataset = train_dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 
     model = create_trgecn_model(input_shape, output_dim, units)
 
     # Callbacks
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3)
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=5)
 
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     model.fit(
-        datagen.flow(x_train, y_train, batch_size=batch_size),
+        train_dataset,
         epochs=num_epochs,
         validation_data=(x_val, y_val),
         callbacks=[early_stopping, reduce_lr]
@@ -155,7 +157,8 @@ if __name__ == "__main__":
 
 
 
+
 # Transformer-based Relational Graph Efficient Convolutional Network (TRGECN)
 # python trgecn_mnist.py
-# Test Accuracy: 0.9867
+# Test Accuracy: 0.9867 (prone to overfitting)
 

@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Input
+from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from sklearn.preprocessing import OneHotEncoder
 from spektral.data import Dataset, Graph
@@ -8,9 +9,10 @@ from spektral.data.loaders import DisjointLoader
 from scipy import sparse
 import warnings
 
+# Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 
-# Define R-GCN Layer
+# Define the Relational GCN Layer
 class RelationalGCNLayer(tf.keras.layers.Layer):
     def __init__(self, units, num_relations, activation=None, **kwargs):
         super().__init__(**kwargs)
@@ -24,17 +26,14 @@ class RelationalGCNLayer(tf.keras.layers.Layer):
     def call(self, inputs):
         x, a = inputs
         output = tf.zeros((tf.shape(x)[0], self.units), dtype=x.dtype)
-        
         for i in range(self.num_relations):
             h = self.dense_layers[i](x)
             output += tf.sparse.sparse_dense_matmul(a, h)
-        
         if self.activation:
             output = self.activation(output)
-        
         return output
 
-# Define R-GCN Model
+# Define the R-GCN Model
 class RGCN(tf.keras.Model):
     def __init__(self, num_relations, num_classes, **kwargs):
         super().__init__(**kwargs)
@@ -48,7 +47,7 @@ class RGCN(tf.keras.Model):
         x = self.conv2([x, a])
         return self.dense(tf.math.segment_mean(x, i))
 
-# Define Dataset Class
+# Define Dataset Class for MNIST
 class MNISTGraphDataset(Dataset):
     def __init__(self, num_nodes=784, **kwargs):
         self.num_nodes = num_nodes
@@ -77,23 +76,37 @@ def load_and_preprocess_data(batch_size):
     return loader
 
 def main():
-    output_dim = 10
+    input_shape = (28, 28, 1)  # Shape for MNIST images
+    output_dim = 10            # Number of classes
     num_epochs = 10
     batch_size = 64
     
+    # Load and preprocess data
     loader = load_and_preprocess_data(batch_size)
     
+    # Define model
     num_relations = 1  # Single relation type (identity adjacency)
     model = RGCN(num_relations=num_relations, num_classes=output_dim)
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     
-    # Training with data loader
-    model.fit(loader.load(), steps_per_epoch=loader.steps_per_epoch, epochs=num_epochs)
+    # Callbacks
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='loss', patience=5, restore_best_weights=True)
+    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='loss', factor=0.1, patience=3)
     
-    # Create a new loader for testing
+    # Train the model
+    model.fit(
+        loader.load(), 
+        steps_per_epoch=loader.steps_per_epoch, 
+        epochs=num_epochs,
+        callbacks=[early_stopping, reduce_lr]
+    )
+    
+    # Evaluate the model
     test_loader = DisjointLoader(loader.dataset, batch_size=batch_size, shuffle=False)
     test_loss, test_accuracy = model.evaluate(test_loader.load(), steps=test_loader.steps_per_epoch)
-    print(f'Test accuracy: {test_accuracy:.4f}')
+    
+    print(f'Test Loss: {test_loss:.4f}')
+    print(f'Test Accuracy: {test_accuracy:.4f}')
 
 if __name__ == "__main__":
     main()
@@ -101,7 +114,8 @@ if __name__ == "__main__":
 
 
 
-# Relational Graph Convolutional Network (RGCNN)
+
+# Relational Graph Convolutional Network (RGCN)
 # python rgcn_mnist.py
 # Test Accuracy: 0.2297
 
