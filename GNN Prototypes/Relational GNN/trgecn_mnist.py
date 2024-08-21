@@ -1,5 +1,4 @@
 import tensorflow as tf
-import numpy as np
 from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D, Dropout, Reshape, MultiHeadAttention, LayerNormalization
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
@@ -155,7 +154,8 @@ if __name__ == "__main__":
     main()
 
 
+
 # Transformer-based Relational Graph Efficient Convolutional Network (TRGECN)
 # python trgecn_mnist.py
-# Test Accuracy: 
+# Test Accuracy: 0.9867
 
