@@ -1,13 +1,14 @@
 import tensorflow as tf
 import numpy as np
-from tensorflow.keras.layers import Input, Dense, Dropout
-from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense
 from tensorflow.keras.datasets import mnist
 from sklearn.preprocessing import OneHotEncoder
-import spektral
 from spektral.data import Dataset, Graph
 from spektral.data.loaders import DisjointLoader
 from scipy import sparse
+import warnings
+
+warnings.filterwarnings('ignore')
 
 # Define R-GCN Layer
 class RelationalGCNLayer(tf.keras.layers.Layer):
@@ -19,7 +20,6 @@ class RelationalGCNLayer(tf.keras.layers.Layer):
     
     def build(self, input_shape):
         self.dense_layers = [tf.keras.layers.Dense(self.units) for _ in range(self.num_relations)]
-        self.built = True
     
     def call(self, inputs):
         x, a = inputs
@@ -29,7 +29,7 @@ class RelationalGCNLayer(tf.keras.layers.Layer):
             h = self.dense_layers[i](x)
             output += tf.sparse.sparse_dense_matmul(a, h)
         
-        if self.activation is not None:
+        if self.activation:
             output = self.activation(output)
         
         return output
@@ -77,10 +77,9 @@ def load_and_preprocess_data(batch_size):
     return loader
 
 def main():
-    input_shape = (784, 1)  # Flattened image with a single feature (pixel value)
     output_dim = 10
     num_epochs = 10
-    batch_size = 32  # Reduced batch size to save memory
+    batch_size = 64
     
     loader = load_and_preprocess_data(batch_size)
     
@@ -101,9 +100,10 @@ if __name__ == "__main__":
 
 
 
+
 # Relational Graph Convolutional Network (RGCNN)
 # python rgcn_mnist.py
-# Test Accuracy: 
+# Test Accuracy: 0.2297
 
 
 
