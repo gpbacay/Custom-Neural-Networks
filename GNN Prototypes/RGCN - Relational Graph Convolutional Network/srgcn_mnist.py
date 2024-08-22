@@ -168,7 +168,7 @@ if __name__ == "__main__":
 
 
 
-# Spatial Relational Graph Convolutional Network (RGCN)
+# Spatial Relational Graph Convolutional Network (SRGCN)
 # python srgcn_mnist.py
 # Test Accuracy: 0.9671
 
