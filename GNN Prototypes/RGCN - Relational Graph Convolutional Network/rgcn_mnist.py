@@ -4,7 +4,6 @@ from tensorflow.keras.layers import Input, Dense, Conv2D, BatchNormalization, Dr
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.callbacks import EarlyStopping
-import matplotlib.pyplot as plt
 
 class RGCNLayer(tf.keras.layers.Layer):
     """
@@ -103,7 +102,7 @@ def create_rgcn_model(input_shape, num_classes, num_relations):
     x = Reshape((-1, 64))(x)
     
     # Create adjacency matrices
-    adj_matrices = create_adjacency_matrices((28, 28), num_relations)
+    adj_matrices = create_adjacency_matrices((14, 14), num_relations)  # Adjusted for downsampling
     
     # Apply RGCN layers
     x = RGCNLayer(128, num_relations, activation='relu')(x, adj_matrices)
@@ -155,7 +154,7 @@ def main():
     x_train, y_train, x_test, y_test = load_and_preprocess_data()
     
     # Create and compile the model
-    model = create_rgcn_model((28, 28, 1), 10, 4)
+    model = create_rgcn_model((14, 14, 64), 10, 4)  # Adjusted input shape for RGCN layer
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     
     # Early stopping callback to prevent overfitting
@@ -165,7 +164,7 @@ def main():
     history = model.fit(
         x_train, y_train,
         batch_size=128,
-        epochs=10,
+        epochs=20,  # Increased epochs for better training
         validation_split=0.1,
         callbacks=[early_stopping]
     )
@@ -173,30 +172,6 @@ def main():
     # Evaluate the model on test data
     test_loss, test_acc = model.evaluate(x_test, y_test)
     print(f"Test accuracy: {test_acc:.4f}")
-    
-    # Plot training and validation accuracy and loss
-    plt.figure(figsize=(12, 4))
-    
-    # Accuracy plot
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['accuracy'], label='Training Accuracy')
-    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
-    plt.title('Model Accuracy')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    
-    # Loss plot
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['loss'], label='Training Loss')
-    plt.plot(history.history['val_loss'], label='Validation Loss')
-    plt.title('Model Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.show()
 
 if __name__ == '__main__':
     main()
