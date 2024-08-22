@@ -144,7 +144,7 @@ if __name__ == '__main__':
 
 # Relational Graph Convolutional Network (RGCN)
 # python rgcn_mnist.py
-# Test Accuracy: 0.8420 (slow)
+# Test Accuracy: (slow)
 
 
 

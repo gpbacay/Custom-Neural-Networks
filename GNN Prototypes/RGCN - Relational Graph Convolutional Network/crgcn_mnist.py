@@ -9,28 +9,46 @@ import warnings
 # Suppress warnings for cleaner output
 warnings.filterwarnings('ignore')
 
-# Define R-GCN Layer
+# Custom layer to create adjacency matrices
+class AdjacencyMatrixLayer(tf.keras.layers.Layer):
+    def __init__(self, num_relations, **kwargs):
+        super().__init__(**kwargs)
+        self.num_relations = num_relations
+
+    def call(self, inputs):
+        batch_size = tf.shape(inputs)[0]
+        adjacency_matrices = [tf.eye(batch_size) for _ in range(self.num_relations)]
+        return adjacency_matrices
+
+# Define R-GCN Layer with Message Passing
 class RelationalGCNLayer(tf.keras.layers.Layer):
     def __init__(self, units, num_relations, activation=None, **kwargs):
         super().__init__(**kwargs)
         self.units = units
         self.num_relations = num_relations
         self.activation = tf.keras.activations.get(activation)
-    
+
     def build(self, input_shape):
         self.dense_layers = [tf.keras.layers.Dense(self.units, kernel_regularizer=tf.keras.regularizers.l2(0.01)) for _ in range(self.num_relations)]
-    
-    def call(self, inputs):
+        self.self_loop_layer = tf.keras.layers.Dense(self.units, kernel_regularizer=tf.keras.regularizers.l2(0.01))
+
+    def call(self, inputs, adjacency_matrices):
         x = inputs
         output = tf.zeros((tf.shape(x)[0], self.units), dtype=x.dtype)
-        
+
+        # Message Passing
         for i in range(self.num_relations):
-            h = self.dense_layers[i](x)
+            neighbor_messages = tf.matmul(adjacency_matrices[i], x)  # Aggregating neighbor features
+            h = self.dense_layers[i](neighbor_messages)
             output += h
-        
+
+        # Adding self-loop
+        self_loop_message = self.self_loop_layer(x)
+        output += self_loop_message
+
         if self.activation:
             output = self.activation(output)
-        
+
         return output
 
 # Define EfficientNet Block
@@ -48,7 +66,7 @@ def efficientnet_block(inputs, filters, expansion_factor, stride):
         x = tf.keras.layers.Add()([inputs, x])
     return x
 
-# Define Model with CNN and R-GCN
+# Define Model with CNN and R-GCN with Message Passing
 def create_cnn_rgcn_model(input_shape, output_dim, units, num_relations):
     inputs = Input(shape=input_shape)
     
@@ -62,9 +80,13 @@ def create_cnn_rgcn_model(input_shape, output_dim, units, num_relations):
     x = GlobalAveragePooling2D()(x)
     x = Flatten()(x)
 
-    # Relational GCN layer
+    # Create adjacency matrices (simulated for this example)
+    adjacency_layer = AdjacencyMatrixLayer(num_relations=num_relations)
+    adjacency_matrices = adjacency_layer(x)
+
+    # Relational GCN layer with message passing
     rgcn = RelationalGCNLayer(units=units, num_relations=num_relations)
-    graph_features = rgcn(x)
+    graph_features = rgcn(x, adjacency_matrices)
     
     # Combine CNN and R-GCN outputs
     combined_features = Concatenate()([x, graph_features])
@@ -139,6 +161,7 @@ if __name__ == "__main__":
 
 
 
+
 # Convolutional Relational Graph Convolutional Network (CRGCN)
 # python crgcn_mnist.py
-# Test Accuracy: 0.
+# Test Accuracy: 0.9943
