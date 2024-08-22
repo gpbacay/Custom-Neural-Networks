@@ -40,23 +40,6 @@ class VisionTransformer(layers.Layer):
         x = self.mlp_head(x)
         return x
 
-def build_vit_model(input_shape, patch_size, embedding_dim, num_heads, num_layers, num_classes):
-    inputs = Input(shape=input_shape)
-    # Compute number of patches
-    num_patches = (input_shape[0] // patch_size[0]) * (input_shape[1] // patch_size[1])
-    # Flatten patches
-    x = Reshape(target_shape=(num_patches, np.prod(patch_size)))(inputs)
-    x = VisionTransformer(
-        patch_size=patch_size,
-        num_patches=num_patches,
-        embedding_dim=embedding_dim,
-        num_heads=num_heads,
-        num_layers=num_layers,
-        num_classes=num_classes
-    )(x)
-    model = models.Model(inputs, x)
-    return model
-
 # Custom Spiking and Neurogenic LNN Layer
 class SpikingLNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, leak_rate, max_reservoir_dim, spike_threshold=1.0, **kwargs):
@@ -142,16 +125,12 @@ def create_csnllt_model(input_shape, patch_size, embedding_dim, num_heads, num_l
     model = models.Model(inputs, outputs)
     return model
 
-# Set hyperparameters for Vision Transformer
-input_shape_vit = (28, 28, 1)
-patch_size_vit = (7, 7)  # Size of each patch
-embedding_dim_vit = 64
-num_heads_vit = 4
-num_layers_vit = 2
-num_classes_vit = 10
-
-# Set hyperparameters for Convolutional Spiking Neurogenic LNN LSTM Transformer
-input_shape_csnllt = (28, 28, 1)
+# Set hyperparameters
+input_shape = (28, 28, 1)
+patch_size = (7, 7)
+embedding_dim = 64
+num_heads = 4
+num_layers = 2
 reservoir_dim = 100
 max_reservoir_dim = 1000
 spectral_radius = 1.5
@@ -176,8 +155,8 @@ y_train = tf.keras.utils.to_categorical(y_train)
 y_val = tf.keras.utils.to_categorical(y_val)
 y_test = tf.keras.utils.to_categorical(y_test)
 
-# Create and compile Convolutional Spiking Neurogenic LNN LSTM Transformer Model
-csnllt_model = create_csnllt_model(input_shape_csnllt, patch_size_vit, embedding_dim_vit, num_heads_vit, num_layers_vit, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim)
+# Create and compile CSNLLT Model
+csnllt_model = create_csnllt_model(input_shape, patch_size, embedding_dim, num_heads, num_layers, reservoir_dim, spectral_radius, leak_rate, max_reservoir_dim, output_dim)
 
 callbacks = [
     EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True),
@@ -186,6 +165,7 @@ callbacks = [
 
 csnllt_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
+# Train the model
 history = csnllt_model.fit(
     x_train, y_train,
     epochs=num_epochs,
@@ -199,7 +179,6 @@ test_loss, test_acc = csnllt_model.evaluate(x_test, y_test, verbose=2)
 print(f'Test accuracy: {test_acc:.4f}')
 
 
-
-# Convolutional Spiking Neurogenic Liquid State LSTM Transformer (CSNLLT)
+# Convolutional Spiking Neurogenic Liquid State LSTM Transformer (CSNLLT) Version 2
 # python csnllt_mnist.py
-# Test accuracy: 0.9921
+# Test accuracy: 0.9917

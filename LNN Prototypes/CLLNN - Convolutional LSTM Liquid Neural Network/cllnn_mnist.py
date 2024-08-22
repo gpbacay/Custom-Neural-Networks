@@ -136,4 +136,4 @@ if __name__ == "__main__":
 
 # Convolutional LSTM Liquid Nueral Network (CLLNN)
 # python cllnn_mnist.py
-# Test Accuracy: 0.9921
+# Test Accuracy: 0.9923

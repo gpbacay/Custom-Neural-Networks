@@ -231,4 +231,4 @@ if __name__ == "__main__":
 
 # Convolutional Attention Spiking Elastic Liquid Nueral Network (CASE-LNN)
 # python case_lnn_mnist.py
-# Test Accuracy: 
+# Test Accuracy: (too slow)

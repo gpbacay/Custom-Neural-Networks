@@ -67,4 +67,4 @@ model.summary()
 
 # Convolutional Standard Gated Recurrent Unit (CGRU)
 # python cgru_mnist.py
-# Test Accuracy: 0.9905
+# Test Accuracy: 0.9919
