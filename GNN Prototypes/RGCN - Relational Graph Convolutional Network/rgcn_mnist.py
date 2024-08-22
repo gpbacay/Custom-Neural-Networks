@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from tensorflow.keras.layers import Input, Dense, Conv2D, BatchNormalization, Dropout, Reshape
+from tensorflow.keras.layers import Input, Dense, Conv2D, BatchNormalization, Dropout, Reshape, GlobalAveragePooling2D
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.callbacks import EarlyStopping
@@ -102,7 +102,7 @@ def create_rgcn_model(input_shape, num_classes, num_relations):
     x = Reshape((-1, 64))(x)
     
     # Create adjacency matrices
-    adj_matrices = create_adjacency_matrices((14, 14), num_relations)  # Adjusted for downsampling
+    adj_matrices = create_adjacency_matrices((28, 28), num_relations)
     
     # Apply RGCN layers
     x = RGCNLayer(128, num_relations, activation='relu')(x, adj_matrices)
@@ -110,7 +110,7 @@ def create_rgcn_model(input_shape, num_classes, num_relations):
     x = RGCNLayer(64, num_relations, activation='relu')(x, adj_matrices)
     
     # Global average pooling and output layer
-    x = tf.keras.layers.GlobalAveragePooling1D()(x)
+    x = GlobalAveragePooling2D()(x)
     x = Dropout(0.5)(x)
     outputs = Dense(num_classes, activation='softmax')(x)
     
@@ -142,7 +142,7 @@ def load_and_preprocess_data():
         tf.keras.layers.RandomFlip('horizontal')
     ])
     
-    x_train = data_augmentation(x_train)
+    x_train = data_augmentation(x_train, training=True)
     
     return x_train, y_train, x_test, y_test
 
@@ -154,17 +154,17 @@ def main():
     x_train, y_train, x_test, y_test = load_and_preprocess_data()
     
     # Create and compile the model
-    model = create_rgcn_model((14, 14, 64), 10, 4)  # Adjusted input shape for RGCN layer
+    model = create_rgcn_model((14, 14, 64), 10, 4)
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     
     # Early stopping callback to prevent overfitting
-    early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
     
     # Train the model
     history = model.fit(
         x_train, y_train,
-        batch_size=128,
-        epochs=20,  # Increased epochs for better training
+        batch_size=64,
+        epochs=10, 
         validation_split=0.1,
         callbacks=[early_stopping]
     )
@@ -179,9 +179,10 @@ if __name__ == '__main__':
 
 
 
+
 # Spatial Relational Graph Convolutional Network (RGCN)
 # python srgcn_mnist.py
-# Test Accuracy: 0.9678
+# Test Accuracy: 0.9492
 
 
 
