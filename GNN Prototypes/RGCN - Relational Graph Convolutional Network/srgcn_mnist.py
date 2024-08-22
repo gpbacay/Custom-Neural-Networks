@@ -69,7 +69,7 @@ def create_rgcn_model(input_shape, output_dim, units):
     x = Flatten()(x)
     
     # Apply R-GCN for graph-based reasoning
-    rgcn = RGCN(num_relations=1, units=units)
+    rgcn = RGCN(num_relations=4, units=units)
     x = rgcn(x)
     
     # Final classification layers
@@ -170,7 +170,7 @@ if __name__ == "__main__":
 
 # Spatial Relational Graph Convolutional Network (RGCN)
 # python srgcn_mnist.py
-# Test Accuracy: 0.9715
+# Test Accuracy: 0.9671
 
 
 
