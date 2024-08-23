@@ -68,7 +68,7 @@ class AdaptiveMessagePassingLayer(layers.Layer):
         return tf.reduce_sum(messages, axis=0)
 
 # Create Spatio-Temporal Adaptive Relational Liquid Neural Network (STAR-LNN)
-def create_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations):
+def create_c_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations):
     inputs = layers.Input(shape=input_shape)
 
     # Add Convolutional Layers
@@ -140,7 +140,7 @@ def main():
     datagen.fit(x_train)
 
     # Create Spatio-Temporal Adaptive Relational Liquid Neural Network (STAR-LNN)
-    model = create_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations)
+    model = create_c_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations)
 
     # Compile and train the model
     early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
@@ -168,5 +168,5 @@ if __name__ == "__main__":
 
 # Convolutonal Spatio-Temporal Adaptive Relational Liquid Nueral Network (C-STAR-LNN)
 # python cstarlnn_mnist.py
-# Test Accuracy: 0.9922
+# Test Accuracy: 0.9949
 
