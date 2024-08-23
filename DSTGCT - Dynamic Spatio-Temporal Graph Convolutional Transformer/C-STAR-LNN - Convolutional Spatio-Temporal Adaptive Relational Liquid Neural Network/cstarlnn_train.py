@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras import callbacks
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -21,7 +21,7 @@ def preprocess_mnist_data():
     
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
-def main():
+def train_and_evaluate():
     # Set hyperparameters
     input_shape = (28, 28, 1)
     reservoir_dim = 1000
@@ -51,8 +51,8 @@ def main():
     model = create_c_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations)
 
     # Compile and train the model
-    early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
+    early_stopping = callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+    reduce_lr = callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
 
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
@@ -67,11 +67,12 @@ def main():
     test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
     print(f"Test Accuracy: {test_accuracy:.4f}")
 
-    # Save the model
+    # Save the trained model
     model.save('Trained Models/cstarlnn_mnist.keras')
 
 if __name__ == "__main__":
-    main()
+    train_and_evaluate()
+
 
 
 

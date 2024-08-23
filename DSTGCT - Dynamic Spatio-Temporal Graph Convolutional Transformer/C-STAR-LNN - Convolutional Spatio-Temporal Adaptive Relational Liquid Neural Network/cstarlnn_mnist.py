@@ -166,7 +166,7 @@ if __name__ == "__main__":
 
 
 
-# Convolutonal Spatio-Temporal Adaptive Relational Liquid Nueral Network (C-STAR-LNN)
+# Convolutonal Spatio-Temporal Adaptive Relational Liquid Nueral Network (C-STAR-LNN) in DSTGCT
 # python cstarlnn_mnist.py
 # Test Accuracy: 0.9949
 
