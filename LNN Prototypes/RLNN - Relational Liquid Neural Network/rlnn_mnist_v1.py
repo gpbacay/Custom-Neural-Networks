@@ -6,7 +6,8 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-class SpatiotemporalLNNLayer(layers.Layer):
+# Custom Layer for Spatial Processing
+class SpatialReservoirLayer(layers.Layer):
     def __init__(self, reservoir_dim, input_dim, spectral_radius, leak_rate, **kwargs):
         super().__init__(**kwargs)
         self.reservoir_dim = reservoir_dim
@@ -40,6 +41,7 @@ class SpatiotemporalLNNLayer(layers.Layer):
         state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_part + reservoir_part)
         return state
 
+# Custom Layer for Message Passing
 class MessagePassingLayer(layers.Layer):
     def __init__(self, num_relations, output_dim, **kwargs):
         super().__init__(**kwargs)
@@ -60,59 +62,29 @@ class MessagePassingLayer(layers.Layer):
             messages.append(message)
         return tf.reduce_sum(messages, axis=0)
 
-class LNNStep(layers.Layer):
-    def __init__(self, reservoir_weights, input_weights, leak_rate, **kwargs):
-        super().__init__(**kwargs)
-        self.reservoir_weights = tf.constant(reservoir_weights, dtype=tf.float32)
-        self.input_weights = tf.constant(input_weights, dtype=tf.float32)
-        self.leak_rate = leak_rate
-
-    @property
-    def state_size(self):
-        return (self.reservoir_weights.shape[0],)
-
-    def call(self, inputs, states):
-        prev_state = states[0]
-        input_part = tf.matmul(inputs, self.input_weights, transpose_b=True)
-        reservoir_part = tf.matmul(prev_state, self.reservoir_weights, transpose_b=True)
-        state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_part + reservoir_part)
-        return state, [state]
-
-def initialize_lnn_reservoir(input_dim, reservoir_dim, spectral_radius):
-    reservoir_weights = np.random.randn(reservoir_dim, reservoir_dim)
-    reservoir_weights *= spectral_radius / np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
-    input_weights = np.random.randn(reservoir_dim, input_dim) * 0.1
-    return reservoir_weights, input_weights
-
-def create_combined_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations):
+# Create Spatiotemporal Reservoir Model
+def create_spatiotemporal_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations):
     inputs = layers.Input(shape=input_shape)
     x = layers.Flatten()(inputs)
     
     input_dim = x.shape[-1]
 
-    # Spatiotemporal Reservoir Layer
-    spatiotemporal_reservoir = SpatiotemporalLNNLayer(reservoir_dim, input_dim, spectral_radius, leak_rate)
-    reservoir_output = spatiotemporal_reservoir(x)
+    # Spatial Reservoir Layer
+    spatial_reservoir = SpatialReservoirLayer(reservoir_dim, input_dim, spectral_radius, leak_rate)
+    reservoir_output = spatial_reservoir(x)
 
     # Message Passing Layer
     message_passing = MessagePassingLayer(num_relations, reservoir_dim)
     multi_relational_output = message_passing(reservoir_output)
 
-    # LNN Layer
-    reservoir_weights, input_weights = initialize_lnn_reservoir(input_dim, reservoir_dim, spectral_radius)
-    def lnn_layer_fn(x):
-        lnn_layer = layers.RNN(LNNStep(reservoir_weights, input_weights, leak_rate), return_sequences=False)
-        return lnn_layer(tf.expand_dims(x, axis=1))
-    lnn_output = layers.Lambda(lnn_layer_fn)(x)
-
-    # Combine all outputs
-    combined_features = layers.Concatenate()([reservoir_output, multi_relational_output, lnn_output])
+    # Combine and output
+    combined_features = layers.Concatenate()([reservoir_output, multi_relational_output])
     outputs = layers.Dense(output_dim, activation='softmax')(combined_features)
 
     model = models.Model(inputs, outputs)
     return model
 
-# Data preprocessing function
+# Preprocess MNIST Data
 def preprocess_mnist_data():
     (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
@@ -141,8 +113,8 @@ def main():
     # Prepare data
     (x_train, y_train), (x_val, y_val), (x_test, y_test) = preprocess_mnist_data()
 
-    # Create Combined Model
-    model = create_combined_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations)
+    # Create Spatiotemporal Reservoir Model
+    model = create_spatiotemporal_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations)
 
     # Compile and train the model
     early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
@@ -160,5 +132,5 @@ if __name__ == "__main__":
 
 
 # Relational Liquid Nueral Network (LNN)
-# python rlnn_mnist.py
-# Test Accuracy: 0.9755
+# python rlnn_mnist_v1.py
+# Test Accuracy: 0.9752
