@@ -95,4 +95,4 @@ print(f"Test Accuracy: {test_accuracy:.4f}")
 
 # Liquid Nueral Network (LNN)
 # python lnn_mnist.py
-# Test Accuracy: 0.9370
+# Test Accuracy: 0.9386
