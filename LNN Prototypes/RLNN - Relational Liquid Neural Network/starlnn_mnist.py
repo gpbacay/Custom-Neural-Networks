@@ -62,8 +62,8 @@ class AdaptiveMessagePassingLayer(layers.Layer):
             messages.append(message)
         return tf.reduce_sum(messages, axis=0)
 
-# Create Spatiotemporal Reservoir Model
-def create_spatiotemporal_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations):
+# Create Spatio-Temporal Adaptive Relational Liquid Neural Network (STAR-LNN)
+def create_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations):
     inputs = layers.Input(shape=input_shape)
     x = layers.Flatten()(inputs)
     
@@ -113,8 +113,8 @@ def main():
     # Prepare data
     (x_train, y_train), (x_val, y_val), (x_test, y_test) = preprocess_mnist_data()
 
-    # Create Spatiotemporal Reservoir Model
-    model = create_spatiotemporal_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations)
+    # Create Spatio-Temporal Adaptive Relational Liquid Neural Network (STAR-LNN)
+    model = create_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations)
 
     # Compile and train the model
     early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
@@ -132,6 +132,7 @@ if __name__ == "__main__":
 
 
 
-# Relational Liquid Nueral Network (LNN)
-# python rlnn_mnist.py
+# Spatio-Temporal Adaptive Relational Liquid Nueral Network (STARLNN)
+# python starlnn_mnist.py
 # Test Accuracy: 0.9755
+
