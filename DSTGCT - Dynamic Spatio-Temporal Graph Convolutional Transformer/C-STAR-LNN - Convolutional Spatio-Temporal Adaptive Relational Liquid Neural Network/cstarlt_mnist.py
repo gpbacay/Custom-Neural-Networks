@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras import layers, models
-from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D, Dropout, Reshape
+from tensorflow.keras.layers import Dense, Input, Conv2D, GlobalAveragePooling2D, Dropout
 from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
@@ -83,39 +83,43 @@ def efficientnet_block(inputs, filters, expansion_factor, stride):
 def create_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations, d_model=64, num_heads=4):
     inputs = Input(shape=input_shape)
     
-    # EfficientNet-based Convolutional layers for feature extraction
+    # Convolutional feature extraction using EfficientNet-based blocks
     x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False)(inputs)
     x = layers.BatchNormalization()(x)
     x = layers.ReLU()(x)
     x = efficientnet_block(x, 16, expansion_factor=1, stride=1)
     x = efficientnet_block(x, 24, expansion_factor=6, stride=2)
     x = efficientnet_block(x, 40, expansion_factor=6, stride=2)
-
+    
     # Global Average Pooling
     x = GlobalAveragePooling2D()(x)
     
     # Dynamic Spatial Reservoir Layer
     dynamic_spatial_reservoir = DynamicSpatialReservoirLayer(reservoir_dim, 40, spectral_radius, leak_rate)
     reservoir_output = dynamic_spatial_reservoir(x)
-
+    
     # Adaptive Message Passing Layer
     adaptive_message_passing = AdaptiveMessagePassingLayer(num_relations, reservoir_dim)
     multi_relational_output = adaptive_message_passing(reservoir_output)
-
+    
     # Transformer-based Multi-Head Attention layer
     attention_input = layers.Reshape((1, -1))(x)  # Add sequence length dimension
     attention_output = MultiHeadAttention(num_heads=num_heads, key_dim=d_model)(attention_input, attention_input)
+    
+    # Adjust the dimension of attention_output to match x's dimension
     attention_output = layers.Reshape((-1,))(attention_output)  # Remove sequence length dimension
+    attention_output = Dense(40, activation='relu')(attention_output)  # Adjust to match x's dimension
     attention_output = LayerNormalization(epsilon=1e-6)(layers.Add()([x, attention_output]))
-
-    # Combine features
+    
+    # Combine features with a gated mechanism
     combined_features = layers.Concatenate()([reservoir_output, multi_relational_output, attention_output])
+    combined_features = layers.Dense(128, activation='relu')(combined_features)
     
     # Fully connected layers
-    x = Dense(128, activation='relu')(combined_features)
+    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(combined_features)
     x = Dropout(0.5)(x)
     outputs = Dense(output_dim, activation='softmax')(x)
-
+    
     model = models.Model(inputs, outputs)
     return model
 
@@ -186,4 +190,4 @@ if __name__ == "__main__":
 
 # Convolutonal Spatio-Temporal Adaptive Relational Liquid Transformer (C-STAR-LT) in DSTGCT
 # python cstarlt_mnist.py
-# Test Accuracy: 0.9936
+# Test Accuracy: 0.9941
