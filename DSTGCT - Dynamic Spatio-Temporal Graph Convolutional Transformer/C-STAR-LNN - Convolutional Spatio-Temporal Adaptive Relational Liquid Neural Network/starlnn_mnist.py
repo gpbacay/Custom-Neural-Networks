@@ -132,7 +132,7 @@ if __name__ == "__main__":
 
 
 
-# Spatio-Temporal Adaptive Relational Liquid Nueral Network (STARLNN)
+# Spatio-Temporal Adaptive Relational Liquid Nueral Network (STAR-LNN)
 # python starlnn_mnist.py
 # Test Accuracy: 0.9755
 
