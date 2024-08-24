@@ -34,22 +34,6 @@ class MultiRelationalLayer(tf.keras.layers.Layer):
         relations = [network(inputs) for network in self.relation_networks]
         return tf.stack(relations, axis=1)  # Shape: (batch_size, num_relations, units)
 
-class MessagePassingLayer(tf.keras.layers.Layer):
-    def __init__(self, units):
-        super().__init__()
-        self.units = units
-        self.message_network = Dense(units, activation='relu')
-        self.update_network = Dense(units, activation='relu')
-
-    def call(self, node_features, relation_features):
-        # Aggregate messages from all relations
-        messages = tf.reduce_sum(relation_features, axis=1)
-        messages = self.message_network(messages)
-        
-        # Update node features
-        updated_features = tf.concat([node_features, messages], axis=-1)
-        return self.update_network(updated_features)
-
 def create_ecnnt_relational_model(input_shape, output_dim, num_relations=3, d_model=64, num_heads=4):
     inputs = Input(shape=input_shape)
     
@@ -73,8 +57,8 @@ def create_ecnnt_relational_model(input_shape, output_dim, num_relations=3, d_mo
     x = Flatten()(x)
     multi_relational = MultiRelationalLayer(num_relations, 128)(x)
     
-    # Message Passing
-    x = MessagePassingLayer(128)(x, multi_relational)
+    # Reshape the output to fit Dense layers for classification
+    x = Flatten()(multi_relational)
     
     # Final classification layers
     x = Dense(128, activation='relu')(x)
@@ -145,8 +129,6 @@ if __name__ == "__main__":
 
 
 
-
-
 # Convolutonal Spatio-Temporal Adaptive Relational Transformer (C-STAR-T)
 # python cstart_mnist.py
-# Test Accuracy: 0.9922
+# Test Accuracy: 0.9895
