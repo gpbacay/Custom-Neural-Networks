@@ -78,7 +78,7 @@ class LiquidReservoirLayer(tf.keras.layers.Layer):
             outputs = self.activation(outputs)
         return outputs
 
-def create_combined_model(input_shape, output_dim, num_relations=3, d_model=64, num_heads=4, reservoir_dim=200):
+def create_combined_model(input_shape, output_dim, num_relations=3, d_model=64, num_heads=4, reservoir_dim=1000):
     inputs = Input(shape=input_shape)
 
     # EfficientNet-based Convolutional layers
@@ -168,4 +168,4 @@ if __name__ == "__main__":
 
 # Convolutonal Spatio-Temporal Adaptive Relational Liquid Transformer (C-STAR-LT)
 # python cstarlt_mnist_v2.py
-# Test Accuracy: 0.9942
+# Test Accuracy: 0.9858
