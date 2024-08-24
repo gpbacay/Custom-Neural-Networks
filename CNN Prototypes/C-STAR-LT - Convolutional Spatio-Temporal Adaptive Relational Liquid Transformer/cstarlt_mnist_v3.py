@@ -4,6 +4,7 @@ from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 import warnings
 
@@ -42,24 +43,51 @@ class MessagePassingLayer(tf.keras.layers.Layer):
         self.update_network = Dense(units, activation='relu')
 
     def call(self, node_features, relation_features):
-        # Aggregate messages from all relations
         messages = tf.reduce_sum(relation_features, axis=1)
         messages = self.message_network(messages)
-        
-        # Update node features
         updated_features = tf.concat([node_features, messages], axis=-1)
         return self.update_network(updated_features)
 
-def create_ecnnt_relational_model(input_shape, output_dim, num_relations=3, d_model=64, num_heads=4):
+class LiquidReservoirLayer(tf.keras.layers.Layer):
+    def __init__(self, units, activation='tanh', use_bias=True):
+        super(LiquidReservoirLayer, self).__init__()
+        self.units = units
+        self.activation = tf.keras.activations.get(activation)
+        self.use_bias = use_bias
+
+    def build(self, input_shape):
+        self.kernel = self.add_weight(
+            name="kernel",
+            shape=[int(input_shape[-1]), self.units],
+            initializer="glorot_uniform",
+            trainable=False
+        )
+        if self.use_bias:
+            self.bias = self.add_weight(
+                name="bias",
+                shape=[self.units],
+                initializer="zeros",
+                trainable=False
+            )
+
+    def call(self, inputs):
+        outputs = tf.matmul(inputs, self.kernel)
+        if self.use_bias:
+            outputs = tf.nn.bias_add(outputs, self.bias)
+        if self.activation is not None:
+            outputs = self.activation(outputs)
+        return outputs
+
+def create_combined_model(input_shape, output_dim, num_relations=3, d_model=64, num_heads=3, reservoir_dim=1000):
     inputs = Input(shape=input_shape)
-    
-    # EfficientNet-based Convolutional layers for feature extraction
+
+    # EfficientNet-based Convolutional layers
     x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False)(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
-    x = efficientnet_block(x, 16, expansion_factor=1, stride=1)
-    x = efficientnet_block(x, 24, expansion_factor=6, stride=2)
-    x = efficientnet_block(x, 40, expansion_factor=6, stride=2)
+    x = efficientnet_block(x, 8, expansion_factor=1, stride=1)
+    x = efficientnet_block(x, 16, expansion_factor=6, stride=2)
+    x = efficientnet_block(x, 32, expansion_factor=6, stride=2)
     
     # Prepare for Transformer and Relational layers
     x = GlobalAveragePooling2D()(x)
@@ -70,11 +98,17 @@ def create_ecnnt_relational_model(input_shape, output_dim, num_relations=3, d_mo
     x = LayerNormalization(epsilon=1e-6)(x + attention_output)
     
     # Multi-Relational Learning
-    x = Flatten()(x)
+    x = Reshape((-1, x.shape[-1]))(x)  # Ensuring it has the shape (batch_size, time_steps, features)
     multi_relational = MultiRelationalLayer(num_relations, 128)(x)
     
     # Message Passing
     x = MessagePassingLayer(128)(x, multi_relational)
+    
+    # Flatten before Liquid Reservoir layer
+    x = Flatten()(x)
+    
+    # Liquid Reservoir layer
+    x = LiquidReservoirLayer(reservoir_dim)(x)
     
     # Final classification layers
     x = Dense(128, activation='relu')(x)
@@ -103,50 +137,33 @@ def load_and_preprocess_data():
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
 def main():
-    input_shape = (28, 28, 1)
-    output_dim = 10
-    num_epochs = 10
-    batch_size = 64
-
     (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_and_preprocess_data()
-    
-    # Data augmentation
-    datagen = tf.keras.preprocessing.image.ImageDataGenerator(
-        rotation_range=10,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        shear_range=0.1,
-        zoom_range=0.1,
-        horizontal_flip=False,
-        fill_mode='nearest'
-    )
-    datagen.fit(x_train)
+    input_shape = x_train.shape[1:]
+    output_dim = 10
 
-    model = create_ecnnt_relational_model(input_shape, output_dim)
+    model = create_combined_model(input_shape, output_dim)
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
     # Callbacks
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=0.00001)
 
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    model.fit(
-        datagen.flow(x_train, y_train, batch_size=batch_size),
-        epochs=num_epochs,
-        validation_data=(x_val, y_val),
-        callbacks=[early_stopping, reduce_lr]
-    )
+    # Train the model
+    history = model.fit(x_train, y_train,
+                        validation_data=(x_val, y_val),
+                        epochs=10,
+                        batch_size=64,
+                        callbacks=[early_stopping, reduce_lr])
 
-    test_loss, test_accuracy = model.evaluate(x_test, y_test)
-    print(f'Test accuracy: {test_accuracy:.4f}')
+    # Evaluate the model
+    test_loss, test_acc = model.evaluate(x_test, y_test)
+    print(f'Test accuracy: {test_acc:.4f}')
 
 if __name__ == "__main__":
     main()
 
 
 
-
-
-
 # Convolutonal Spatio-Temporal Adaptive Relational Liquid Transformer (C-STAR-LT)
-# python cstarlt_mnist_v2.py
-# Test Accuracy: 0.9942
+# python cstarlt_mnist_v3.py
+# Test Accuracy: 0.9858
