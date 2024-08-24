@@ -80,7 +80,7 @@ def efficientnet_block(inputs, filters, expansion_factor, stride):
         x = layers.Add()([inputs, x])
     return x
 
-def create_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations, d_model=64, num_heads=4):
+def create_cstarlt_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations, d_model=64, num_heads=4):
     inputs = Input(shape=input_shape)
     
     # Convolutional feature extraction using EfficientNet-based blocks
@@ -152,7 +152,7 @@ def main():
     # Prepare data
     (x_train, y_train), (x_val, y_val), (x_test, y_test) = preprocess_mnist_data()
     
-    model = create_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations)
+    model = create_cstarlt_model(input_shape, reservoir_dim, spectral_radius, leak_rate, output_dim, num_relations)
 
     # Callbacks
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
