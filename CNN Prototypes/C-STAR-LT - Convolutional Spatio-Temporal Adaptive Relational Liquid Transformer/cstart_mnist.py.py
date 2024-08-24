@@ -147,6 +147,6 @@ if __name__ == "__main__":
 
 
 
-# Convolutonal Spatio-Temporal Adaptive Relational Liquid Transformer (C-STAR-LT)
-# python cstarlt_mnist_v2.py
+# Convolutonal Spatio-Temporal Adaptive Relational Transformer (C-STAR-T)
+# python cstart_mnist.py
 # Test Accuracy: 0.9922
