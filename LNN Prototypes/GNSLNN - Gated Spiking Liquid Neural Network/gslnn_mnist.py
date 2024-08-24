@@ -118,8 +118,8 @@ def main():
 
     # Set hyperparameters
     input_dim = 28 * 28
-    reservoir_dim = 500  # Dimension of the reservoir
-    max_reservoir_dim = 1000  # Maximum dimension of the reservoir
+    reservoir_dim = 512  # Dimension of the reservoir
+    max_reservoir_dim = 1024  # Maximum dimension of the reservoir
     spectral_radius = 1.5  # Spectral radius for reservoir scaling
     leak_rate = 0.3  # Leak rate for state update
     spike_threshold = 0.5  # Threshold for spike generation
@@ -150,4 +150,4 @@ if __name__ == "__main__":
 
 # Gated Spiking Liquid Neural Network (GSLNN)
 # python gslnn_mnist.py
-# Test Accuracy: 0.9662 (fast)
+# Test Accuracy: 0.9678 (fastest)
