@@ -1,14 +1,27 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten, Conv2D, MaxPooling2D
+from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten, Conv2D, GlobalAveragePooling2D, Reshape
+from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 
-# Custom Layer: Gated Spiking Liquid Neural Network Step
+def efficientnet_block(inputs, filters, expansion_factor, stride):
+    expanded_filters = filters * expansion_factor
+    x = Conv2D(expanded_filters, kernel_size=1, padding='same', use_bias=False)(inputs)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.ReLU()(x)
+    x = Conv2D(expanded_filters, kernel_size=3, padding='same', strides=stride, use_bias=False)(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.ReLU()(x)
+    x = Conv2D(filters, kernel_size=1, padding='same', use_bias=False)(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    if stride == 1 and inputs.shape[-1] == x.shape[-1]:
+        x = tf.keras.layers.Add()([inputs, x])
+    return x
+
 class GatedSLNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, gate_weights, leak_rate, spike_threshold, max_reservoir_dim, **kwargs):
         super().__init__(**kwargs)
-        # Initialize weights as non-trainable variables
         self.reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32, trainable=False)
         self.input_weights = tf.Variable(input_weights, dtype=tf.float32, trainable=False)
         self.gate_weights = tf.Variable(gate_weights, dtype=tf.float32, trainable=False)
@@ -22,60 +35,47 @@ class GatedSLNNStep(tf.keras.layers.Layer):
 
     def call(self, inputs, states):
         prev_state = states[0][:, :self.reservoir_weights.shape[0]]
-        
-        # Compute input, reservoir, and gate parts of the state update
         input_part = tf.matmul(inputs, self.input_weights, transpose_b=True)
         reservoir_part = tf.matmul(prev_state, self.reservoir_weights, transpose_b=True)
         gate_part = tf.matmul(inputs, self.gate_weights, transpose_b=True)
 
-        # Split gate activations into input, forget, and output gates
         i_gate, f_gate, o_gate = tf.split(tf.sigmoid(gate_part), 3, axis=-1)
-
-        # Update state with gating and reservoir dynamics
         state = (1 - self.leak_rate) * (f_gate * prev_state) + self.leak_rate * tf.tanh(i_gate * (input_part + reservoir_part))
         state = o_gate * state
 
-        # Apply threshold to produce discrete spikes
         spikes = tf.cast(tf.greater(state, self.spike_threshold), dtype=tf.float32)
         state = tf.where(spikes > 0, state - self.spike_threshold, state)
 
-        # Ensure the state size matches the maximum reservoir dimension
         active_size = tf.shape(state)[-1]
         padded_state = tf.concat([state, tf.zeros([tf.shape(state)[0], self.max_reservoir_dim - active_size])], axis=1)
         
         return padded_state, [padded_state]
 
-# Function to initialize reservoir, input, and gate weights
 def initialize_reservoir(input_dim, reservoir_dim, spectral_radius):
-    # Initialize reservoir weights with random values
     reservoir_weights = np.random.randn(reservoir_dim, reservoir_dim)
     reservoir_weights *= spectral_radius / np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
-    
-    # Initialize input weights with small random values
     input_weights = np.random.randn(reservoir_dim, input_dim) * 0.1
-    
-    # Initialize gate weights with small random values
     gate_weights = np.random.randn(3 * reservoir_dim, input_dim) * 0.1
-    
     return reservoir_weights, input_weights, gate_weights
 
-# Function to create the Gated Spiking Liquid Neural Network (GSLNN) model
-def create_gslnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
-    # Define the input layer
+def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, d_model=64, num_heads=4):
     inputs = Input(shape=input_shape)
-    
-    # Add convolutional layers for feature extraction
-    x = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
-    x = MaxPooling2D(pool_size=(2, 2))(x)
 
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-    x = MaxPooling2D(pool_size=(2, 2))(x)
-    
-    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-    x = MaxPooling2D(pool_size=(2, 2))(x)
+    # EfficientNet-based Convolutional layers for feature extraction
+    x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False)(inputs)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.ReLU()(x)
+    x = efficientnet_block(x, 16, expansion_factor=1, stride=1)
+    x = efficientnet_block(x, 24, expansion_factor=6, stride=2)
+    x = efficientnet_block(x, 40, expansion_factor=6, stride=2)
 
-    # Flatten the output from convolutional layers
-    x = Flatten()(x)
+    # Prepare for Transformer layer
+    x = GlobalAveragePooling2D()(x)
+    x = Reshape((1, x.shape[-1]))(x)  # Add seq_len dimension for MultiHeadAttention
+
+    # Transformer-based Multi-Head Attention layer
+    attention_output = MultiHeadAttention(num_heads=num_heads, key_dim=d_model)(x, x)
+    x = LayerNormalization(epsilon=1e-6)(x + attention_output)
 
     # Initialize Spiking LNN weights
     reservoir_weights, input_weights, gate_weights = initialize_reservoir(x.shape[-1], reservoir_dim, spectral_radius)
@@ -86,35 +86,25 @@ def create_gslnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, s
         return_sequences=True
     )
 
-    # Define a function to apply the Spiking LNN layer
-    def apply_gated_slnn(x):
-        lnn_output = lnn_layer(tf.expand_dims(x, axis=1))
-        return Flatten()(lnn_output)
-
     # Apply the Spiking LNN layer
-    lnn_output = Lambda(apply_gated_slnn)(x)
+    lnn_output = lnn_layer(x)
 
-    # Add dense layers for classification
+    # Flatten the output
+    lnn_output = Flatten()(lnn_output)
+
+    # Final classification layers
     x = Dense(128, activation='relu')(lnn_output)
-    x = Dropout(0.5)(x)  # Dropout for regularization
-    x = Dense(64, activation='relu')(x)
-    x = Dropout(0.5)(x)  # Dropout for regularization
-
-    # Output layer with softmax activation for classification
+    x = Dropout(0.5)(x)
     outputs = Dense(output_dim, activation='softmax')(x)
 
-    # Define the model
     model = tf.keras.Model(inputs, outputs)
     return model
 
-# Function to preprocess MNIST data
 def preprocess_data(x):
     # Normalize pixel values to [0, 1]
     x = x.astype(np.float32) / 255.0
-    # Expand dimensions to fit the input shape for Conv2D
     return np.expand_dims(x, axis=-1)  # Add channel dimension
 
-# Main function to train and evaluate the model
 def main():
     # Load and preprocess MNIST dataset
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
@@ -125,9 +115,9 @@ def main():
     x_test = preprocess_data(x_test)
 
     # Convert class labels to one-hot encoded vectors
-    y_train = tf.keras.utils.to_categorical(y_train)
-    y_val = tf.keras.utils.to_categorical(y_val)
-    y_test = tf.keras.utils.to_categorical(y_test)
+    y_train = tf.keras.utils.to_categorical(y_train, 10)
+    y_val = tf.keras.utils.to_categorical(y_val, 10)
+    y_test = tf.keras.utils.to_categorical(y_test, 10)
 
     # Set hyperparameters
     input_shape = (28, 28, 1)  # MNIST images are 28x28 pixels with 1 channel
@@ -140,8 +130,8 @@ def main():
     num_epochs = 10  # Number of training epochs
     batch_size = 64  # Batch size for training
 
-    # Create the Gated Spiking Liquid Neural Network (GSLNN) model
-    model = create_gslnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
+    # Create the C-STAR-GSL-T model
+    model = create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
 
     # Define callbacks for early stopping and learning rate reduction
     callbacks = [
@@ -161,6 +151,9 @@ if __name__ == "__main__":
     main()
 
 
-# Convolutional Gated Spiking Liquid Neural Network (CGSLNN)
-# python cgslnn_mnist.py
-# Test Accuracy: 0.9929
+
+# Convolutional Spatio-Temporal Adaptive Relational Gated Spiking Liquid Transformer (C-STAR-GSL-T)
+# python cstargslt_mnist.py
+# Test Accuracy:
+
+
