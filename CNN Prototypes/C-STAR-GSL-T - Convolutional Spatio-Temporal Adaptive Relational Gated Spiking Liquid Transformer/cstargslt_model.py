@@ -2,8 +2,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten, Conv2D, GlobalAveragePooling2D, Reshape
 from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from sklearn.model_selection import train_test_split
 
 def efficientnet_block(inputs, filters, expansion_factor, stride):
     expanded_filters = filters * expansion_factor
@@ -22,9 +20,9 @@ def efficientnet_block(inputs, filters, expansion_factor, stride):
 class GatedSLNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, gate_weights, leak_rate, spike_threshold, max_reservoir_dim, **kwargs):
         super().__init__(**kwargs)
-        self.reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32, trainable=False)
-        self.input_weights = tf.Variable(input_weights, dtype=tf.float32, trainable=False)
-        self.gate_weights = tf.Variable(gate_weights, dtype=tf.float32, trainable=False)
+        self.reservoir_weights = reservoir_weights
+        self.input_weights = input_weights
+        self.gate_weights = gate_weights
         self.leak_rate = leak_rate
         self.spike_threshold = spike_threshold
         self.max_reservoir_dim = max_reservoir_dim
@@ -50,6 +48,25 @@ class GatedSLNNStep(tf.keras.layers.Layer):
         padded_state = tf.concat([state, tf.zeros([tf.shape(state)[0], self.max_reservoir_dim - active_size])], axis=1)
         
         return padded_state, [padded_state]
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            "leak_rate": self.leak_rate,
+            "spike_threshold": self.spike_threshold,
+            "max_reservoir_dim": self.max_reservoir_dim,
+            "reservoir_weights": self.reservoir_weights.tolist(),
+            "input_weights": self.input_weights.tolist(),
+            "gate_weights": self.gate_weights.tolist()
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        reservoir_weights = np.array(config.pop('reservoir_weights'))
+        input_weights = np.array(config.pop('input_weights'))
+        gate_weights = np.array(config.pop('gate_weights'))
+        return cls(reservoir_weights, input_weights, gate_weights, **config)
 
 def initialize_reservoir(input_dim, reservoir_dim, spectral_radius):
     reservoir_weights = np.random.randn(reservoir_dim, reservoir_dim)
@@ -99,61 +116,3 @@ def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_r
 
     model = tf.keras.Model(inputs, outputs)
     return model
-
-def preprocess_data(x):
-    # Normalize pixel values to [0, 1]
-    x = x.astype(np.float32) / 255.0
-    return np.expand_dims(x, axis=-1)  # Add channel dimension
-
-def main():
-    # Load and preprocess MNIST dataset
-    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
-    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
-
-    x_train = preprocess_data(x_train)
-    x_val = preprocess_data(x_val)
-    x_test = preprocess_data(x_test)
-
-    # Convert class labels to one-hot encoded vectors
-    y_train = tf.keras.utils.to_categorical(y_train, 10)
-    y_val = tf.keras.utils.to_categorical(y_val, 10)
-    y_test = tf.keras.utils.to_categorical(y_test, 10)
-
-    # Set hyperparameters
-    input_shape = (28, 28, 1)  # MNIST images are 28x28 pixels with 1 channel
-    reservoir_dim = 512  # Dimension of the reservoir
-    max_reservoir_dim = 1024  # Maximum dimension of the reservoir
-    spectral_radius = 1.5  # Spectral radius for reservoir scaling
-    leak_rate = 0.3  # Leak rate for state update
-    spike_threshold = 0.5  # Threshold for spike generation
-    output_dim = 10  # Number of output classes
-    num_epochs = 10  # Number of training epochs
-    batch_size = 64  # Batch size for training
-
-    # Create the C-STAR-GSL-T model
-    model = create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
-
-    # Define callbacks for early stopping and learning rate reduction
-    callbacks = [
-        EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True),
-        ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
-    ]
-
-    # Compile and train the model
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    model.fit(x_train, y_train, epochs=num_epochs, batch_size=batch_size, validation_data=(x_val, y_val), callbacks=callbacks)
-
-    # Evaluate the model on the test set
-    test_loss, test_accuracy = model.evaluate(x_test, y_test, verbose=2)
-    print(f"Test Accuracy: {test_accuracy:.4f}")
-
-if __name__ == "__main__":
-    main()
-
-
-
-# Convolutional Spatio-Temporal Adaptive Relational Gated Spiking Liquid Transformer (C-STAR-GSL-T)
-# python cstargslt_mnist.py
-# Test Accuracy:
-
-
