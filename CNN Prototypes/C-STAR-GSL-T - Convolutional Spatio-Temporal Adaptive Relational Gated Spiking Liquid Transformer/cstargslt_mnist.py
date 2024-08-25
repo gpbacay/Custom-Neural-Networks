@@ -1,8 +1,7 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten, Conv2D, GlobalAveragePooling2D, Reshape
+from tensorflow.keras.layers import Dense, Input, Dropout, Flatten, Conv2D, GlobalAveragePooling2D, Reshape
 from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 
 def efficientnet_block(inputs, filters, expansion_factor, stride):
@@ -22,9 +21,9 @@ def efficientnet_block(inputs, filters, expansion_factor, stride):
 class GatedSLNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, gate_weights, leak_rate, spike_threshold, max_reservoir_dim, **kwargs):
         super().__init__(**kwargs)
-        self.reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32, trainable=False)
-        self.input_weights = tf.Variable(input_weights, dtype=tf.float32, trainable=False)
-        self.gate_weights = tf.Variable(gate_weights, dtype=tf.float32, trainable=False)
+        self.reservoir_weights = reservoir_weights
+        self.input_weights = input_weights
+        self.gate_weights = gate_weights
         self.leak_rate = leak_rate
         self.spike_threshold = spike_threshold
         self.max_reservoir_dim = max_reservoir_dim
@@ -50,6 +49,25 @@ class GatedSLNNStep(tf.keras.layers.Layer):
         padded_state = tf.concat([state, tf.zeros([tf.shape(state)[0], self.max_reservoir_dim - active_size])], axis=1)
         
         return padded_state, [padded_state]
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            "leak_rate": self.leak_rate,
+            "spike_threshold": self.spike_threshold,
+            "max_reservoir_dim": self.max_reservoir_dim,
+            "reservoir_weights": self.reservoir_weights.tolist(),
+            "input_weights": self.input_weights.tolist(),
+            "gate_weights": self.gate_weights.tolist()
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        reservoir_weights = np.array(config.pop('reservoir_weights'))
+        input_weights = np.array(config.pop('input_weights'))
+        gate_weights = np.array(config.pop('gate_weights'))
+        return cls(reservoir_weights, input_weights, gate_weights, **config)
 
 def initialize_reservoir(input_dim, reservoir_dim, spectral_radius):
     reservoir_weights = np.random.randn(reservoir_dim, reservoir_dim)
@@ -101,7 +119,7 @@ def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_r
     return model
 
 def preprocess_data(x):
-    # Normalize pixel values to [0, 1]
+    """Normalize pixel values to [0, 1] and add channel dimension."""
     x = x.astype(np.float32) / 255.0
     return np.expand_dims(x, axis=-1)  # Add channel dimension
 
@@ -135,8 +153,8 @@ def main():
 
     # Define callbacks for early stopping and learning rate reduction
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True),
-        ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
+        tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True),
+        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=2)
     ]
 
     # Compile and train the model
@@ -149,6 +167,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
