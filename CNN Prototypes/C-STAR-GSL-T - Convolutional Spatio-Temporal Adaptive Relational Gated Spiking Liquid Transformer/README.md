@@ -28,7 +28,7 @@ Modern data analysis often involves complex, multidimensional information with i
 
 The C-STAR-GSL-T model addresses these challenges by integrating:
 
-1. EfficientNet-based convolutional layers for spatial analysis
+1. EfficientNet-based convolutional layers for spatial feature extraction and analysis
 
 2. Gated Spiking Liquid Neural Networks (GSLNNs) combining principles from LSTMs, Spiking Neural Networks (SNNs), and LNNs for temporal processing
 
