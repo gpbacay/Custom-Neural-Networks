@@ -3,7 +3,7 @@ from tensorflow import keras
 from tensorflow.keras import layers, models
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 
 # Custom Layer for Dynamic Spatial Reservoir Processing
 class DynamicSpatialReservoirLayer(layers.Layer):
@@ -13,8 +13,6 @@ class DynamicSpatialReservoirLayer(layers.Layer):
         self.input_dim = input_dim
         self.spectral_radius = spectral_radius
         self.leak_rate = leak_rate
-        self.reservoir_weights = None
-        self.input_weights = None
 
     def build(self, input_shape):
         self.reservoir_weights = self.add_weight(
@@ -28,8 +26,10 @@ class DynamicSpatialReservoirLayer(layers.Layer):
             name='input_weights'
         )
 
-    def call(self, inputs):
-        prev_state = tf.zeros((tf.shape(inputs)[0], self.reservoir_dim))
+    def call(self, inputs, training=False):
+        # Ensure that prev_state is managed over time if needed
+        batch_size = tf.shape(inputs)[0]
+        prev_state = tf.zeros((batch_size, self.reservoir_dim))
         input_part = tf.matmul(inputs, self.input_weights, transpose_b=True)
         reservoir_part = tf.matmul(prev_state, self.reservoir_weights)
         state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_part + reservoir_part)
@@ -77,7 +77,7 @@ def create_star_lnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate
     adaptive_message_passing = AdaptiveMessagePassingLayer(num_relations, reservoir_dim)
     multi_relational_output = adaptive_message_passing(reservoir_output)
 
-    # Combine and output
+    # Ensure concatenated dimensions match
     combined_features = layers.Concatenate()([reservoir_output, multi_relational_output])
     outputs = layers.Dense(output_dim, activation='softmax')(combined_features)
 
@@ -89,7 +89,7 @@ def preprocess_mnist_data():
     (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
     
-    scaler = StandardScaler()
+    scaler = MinMaxScaler()
     x_train = scaler.fit_transform(x_train.reshape(-1, 28*28)).reshape(-1, 28, 28, 1)
     x_val = scaler.transform(x_val.reshape(-1, 28*28)).reshape(-1, 28, 28, 1)
     x_test = scaler.transform(x_test.reshape(-1, 28*28)).reshape(-1, 28, 28, 1)
@@ -129,6 +129,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 

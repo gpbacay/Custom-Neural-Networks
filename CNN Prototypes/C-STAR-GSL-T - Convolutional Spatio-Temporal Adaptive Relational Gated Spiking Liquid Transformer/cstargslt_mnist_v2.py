@@ -177,24 +177,21 @@ def main():
     leak_rate = 0.3  # Leak rate for state update
     spike_threshold = 0.5  # Threshold for spike generation
     output_dim = 10  # Number of output classes
-    d_model = 64
-    num_heads = 4
 
-    # Create model
-    model = create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, d_model, num_heads)
-
-    # Compile model
+    # Create and compile the model
+    model = create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
     model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-    # Train model
-    model.fit(x_train, y_train, validation_data=(x_val, y_val), epochs=10, batch_size=64)
+    # Train the model
+    model.fit(x_train, y_train, epochs=10, batch_size=32, validation_data=(x_val, y_val))
 
-    # Evaluate model
-    test_loss, test_accuracy = model.evaluate(x_test, y_test)
-    print(f'Test Accuracy: {test_accuracy:.4f}')
+    # Evaluate the model
+    test_loss, test_acc = model.evaluate(x_test, y_test)
+    print(f'Test accuracy: {test_acc:.4f}')
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
+
 
 
 
