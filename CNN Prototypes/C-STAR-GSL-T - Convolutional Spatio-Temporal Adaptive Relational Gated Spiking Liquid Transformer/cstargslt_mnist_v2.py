@@ -2,17 +2,19 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Dropout, Flatten, Conv2D, GlobalAveragePooling2D, Reshape
 from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 
-def efficientnet_block(inputs, filters, expansion_factor, stride):
+def efficientnet_block(inputs, filters, expansion_factor, stride, l2_reg=1e-4):
     expanded_filters = filters * expansion_factor
-    x = Conv2D(expanded_filters, kernel_size=1, padding='same', use_bias=False)(inputs)
+    x = Conv2D(expanded_filters, kernel_size=1, padding='same', use_bias=False, kernel_regularizer=l2(l2_reg))(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
-    x = Conv2D(expanded_filters, kernel_size=3, padding='same', strides=stride, use_bias=False)(x)
+    x = Conv2D(expanded_filters, kernel_size=3, padding='same', strides=stride, use_bias=False, kernel_regularizer=l2(l2_reg))(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
-    x = Conv2D(filters, kernel_size=1, padding='same', use_bias=False)(x)
+    x = Conv2D(filters, kernel_size=1, padding='same', use_bias=False, kernel_regularizer=l2(l2_reg))(x)
     x = tf.keras.layers.BatchNormalization()(x)
     if stride == 1 and inputs.shape[-1] == x.shape[-1]:
         x = tf.keras.layers.Add()([inputs, x])
@@ -90,10 +92,7 @@ class PositionalEncoding(tf.keras.layers.Layer):
                                      np.arange(d_model)[np.newaxis, :],
                                      d_model)
 
-        # Apply sin to even indices in the array; 2i
         angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
-
-        # Apply cos to odd indices in the array; 2i+1
         angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
 
         pos_encoding = angle_rads[np.newaxis, ...]
@@ -104,59 +103,47 @@ class PositionalEncoding(tf.keras.layers.Layer):
         seq_len = tf.shape(inputs)[1]
         return inputs + self.pos_encoding[:, :seq_len, :]
 
-def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, d_model=64, num_heads=4):
+def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, d_model=64, num_heads=4, l2_reg=1e-4):
     inputs = Input(shape=input_shape)
 
-    # EfficientNet-based Convolutional layers for feature extraction
-    x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False)(inputs)
+    x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False, kernel_regularizer=l2(l2_reg))(inputs)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
-    x = efficientnet_block(x, 16, expansion_factor=1, stride=1)
-    x = efficientnet_block(x, 24, expansion_factor=6, stride=2)
-    x = efficientnet_block(x, 40, expansion_factor=6, stride=2)
+    x = efficientnet_block(x, 16, expansion_factor=1, stride=1, l2_reg=l2_reg)
+    x = efficientnet_block(x, 24, expansion_factor=6, stride=2, l2_reg=l2_reg)
+    x = efficientnet_block(x, 40, expansion_factor=6, stride=2, l2_reg=l2_reg)
 
-    # Prepare for Transformer layer
     x = GlobalAveragePooling2D()(x)
-    x = Reshape((1, x.shape[-1]))(x)  # Add seq_len dimension for MultiHeadAttention
+    x = Reshape((1, x.shape[-1]))(x)
 
-    # Add Positional Encoding before Multi-Head Attention
     pos_encoding_layer = PositionalEncoding(max_position=1, d_model=x.shape[-1])
     x = pos_encoding_layer(x)
 
-    # Transformer-based Multi-Head Attention layer
     attention_output = MultiHeadAttention(num_heads=num_heads, key_dim=d_model)(x, x)
     x = LayerNormalization(epsilon=1e-6)(x + attention_output)
 
-    # Initialize Spiking LNN weights
     reservoir_weights, input_weights, gate_weights = initialize_reservoir(x.shape[-1], reservoir_dim, spectral_radius)
 
-    # Define the Spiking LNN layer with custom dynamics and gating
     lnn_layer = tf.keras.layers.RNN(
         GatedSLNNStep(reservoir_weights, input_weights, gate_weights, leak_rate, spike_threshold, max_reservoir_dim),
         return_sequences=True
     )
 
-    # Apply the Spiking LNN layer
     lnn_output = lnn_layer(x)
-
-    # Flatten the output
     lnn_output = Flatten()(lnn_output)
 
-    # Final classification layers
-    x = Dense(128, activation='relu')(lnn_output)
+    x = Dense(128, activation='relu', kernel_regularizer=l2(l2_reg))(lnn_output)
     x = Dropout(0.5)(x)
-    outputs = Dense(output_dim, activation='softmax')(x)
+    outputs = Dense(output_dim, activation='softmax', kernel_regularizer=l2(l2_reg))(x)
 
     model = tf.keras.Model(inputs, outputs)
     return model
 
 def preprocess_data(x):
-    """Normalize pixel values to [0, 1] and add channel dimension."""
     x = x.astype(np.float32) / 255.0
-    return np.expand_dims(x, axis=-1)  # Add channel dimension
+    return np.expand_dims(x, axis=-1)
 
 def main():
-    # Load and preprocess MNIST dataset
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
 
@@ -164,28 +151,35 @@ def main():
     x_val = preprocess_data(x_val)
     x_test = preprocess_data(x_test)
 
-    # Convert class labels to one-hot encoded vectors
     y_train = tf.keras.utils.to_categorical(y_train, 10)
     y_val = tf.keras.utils.to_categorical(y_val, 10)
     y_test = tf.keras.utils.to_categorical(y_test, 10)
 
-    # Set hyperparameters
-    input_shape = (28, 28, 1)  # MNIST images are 28x28 pixels with 1 channel
-    reservoir_dim = 512  # Dimension of the reservoir
-    max_reservoir_dim = 1024  # Maximum dimension of the reservoir
-    spectral_radius = 1.5  # Spectral radius for reservoir scaling
-    leak_rate = 0.3  # Leak rate for state update
-    spike_threshold = 0.5  # Threshold for spike generation
-    output_dim = 10  # Number of output classes
+    input_shape = (28, 28, 1)
+    reservoir_dim = 256
+    max_reservoir_dim = 512
+    spectral_radius = 1.5
+    leak_rate = 0.3
+    spike_threshold = 0.5
+    output_dim = 10
+    l2_reg = 1e-4
 
-    # Create and compile the model
-    model = create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    model = create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, l2_reg=l2_reg)
+    
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+    model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
-    # Train the model
-    model.fit(x_train, y_train, epochs=10, batch_size=32, validation_data=(x_val, y_val))
+    early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=2, min_lr=1e-5)
 
-    # Evaluate the model
+    history = model.fit(
+        x_train, y_train,
+        epochs=10,
+        batch_size=64,
+        validation_data=(x_val, y_val),
+        callbacks=[early_stopping, reduce_lr]
+    )
+
     test_loss, test_acc = model.evaluate(x_test, y_test)
     print(f'Test accuracy: {test_acc:.4f}')
 
@@ -197,6 +191,6 @@ if __name__ == '__main__':
 
 # Convolutional Spatio-Temporal Adaptive Relational Gated Spiking Liquid Transformer (C-STAR-GSL-T)
 # python cstargslt_mnist_v2.py
-# Test Accuracy: 0.9771
+# Test Accuracy: 0.9909
 
 
