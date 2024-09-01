@@ -207,6 +207,6 @@ if __name__ == '__main__':
 
 # Convolutional Spatio-Temporal Adaptive Relational Gated Spiking Liquid Transformer (C-STAR-GSL-T)
 # python cstargslt_mnist_v2.py
-# Test Accuracy: 0.9909
+# Test Accuracy: 0.9933
 
 
