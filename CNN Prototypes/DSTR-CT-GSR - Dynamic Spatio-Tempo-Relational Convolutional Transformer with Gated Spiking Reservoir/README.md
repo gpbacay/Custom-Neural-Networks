@@ -1,4 +1,4 @@
-# **Dynamic Spatio-Temporal Convolutional Transformer with Gated Spiking Reservoir (DSTR-CT-GSR) for MNIST Classification**
+# **Dynamic Spatio-Tempo-Relational Convolutional Transformer with Gated Spiking Reservoir (DSTR-CT-GSR) for MNIST Classification**
 
 ## Abstract
 

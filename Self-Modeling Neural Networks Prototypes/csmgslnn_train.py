@@ -51,4 +51,4 @@ if __name__ == "__main__":
 
 # CSM-GSLNN - Convolutional Self-Modeling Gated Spiking Liquid Neural Network
 # python csmgslnn_train.py
-# Test Accuracy: 0.9905
+# Test Accuracy: 0.9904
