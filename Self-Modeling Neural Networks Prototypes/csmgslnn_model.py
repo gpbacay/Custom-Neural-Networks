@@ -1,9 +1,7 @@
-import numpy as np
+# model.py
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten, Layer, Conv2D, MaxPooling2D
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from sklearn.model_selection import train_test_split
-import matplotlib.pyplot as plt
+from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten, Conv2D, MaxPooling2D
+from tensorflow.keras import Model
 
 class SelfModelingMechanism:
     def __init__(self, initial_reservoir_dim, max_reservoir_dim, min_reservoir_dim):
@@ -39,7 +37,7 @@ class SelfModelingMechanism:
             np.mean(self.structure_history[-10:]) / self.max_reservoir_dim
         ]
 
-class GatedSLNNStep(Layer):
+class GatedSLNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_dim, input_dim, leak_rate, spike_threshold, max_reservoir_dim, self_modeling_mechanism, **kwargs):
         super().__init__(**kwargs)
         self.reservoir_dim = reservoir_dim
@@ -120,7 +118,7 @@ class GatedSLNNStep(Layer):
         })
         return config
 
-class MetaFeatureLayer(Layer):
+class MetaFeatureLayer(tf.keras.layers.Layer):
     def __init__(self, self_modeling_mechanism, **kwargs):
         super().__init__(**kwargs)
         self.self_modeling_mechanism = self_modeling_mechanism
@@ -172,68 +170,5 @@ def create_self_modeling_gslnn_model(input_shape, initial_reservoir_dim, max_res
 
     outputs = Dense(output_dim, activation='softmax')(x)
 
-    model = tf.keras.Model(inputs, outputs)
+    model = Model(inputs, outputs)
     return model
-
-# Data preprocessing function
-def preprocess_data(x):
-    x = x.astype(np.float32) / 255.0
-    return x.reshape(-1, 28, 28, 1)
-
-def main():
-    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
-    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
-
-    x_train = preprocess_data(x_train)
-    x_val = preprocess_data(x_val)
-    x_test = preprocess_data(x_test)
-
-    y_train = tf.keras.utils.to_categorical(y_train, 10)
-    y_val = tf.keras.utils.to_categorical(y_val, 10)
-    y_test = tf.keras.utils.to_categorical(y_test, 10)
-
-    model = create_self_modeling_gslnn_model(
-        input_shape=(28, 28, 1),
-        initial_reservoir_dim=100,
-        max_reservoir_dim=200,
-        min_reservoir_dim=50,
-        leak_rate=0.2,
-        spike_threshold=0.5,
-        output_dim=10
-    )
-
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-
-    early_stopping = EarlyStopping(monitor='val_loss', patience=5)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3)
-
-    history = model.fit(
-        x_train, y_train,
-        epochs=10,
-        batch_size=64,
-        validation_data=(x_val, y_val),
-        callbacks=[early_stopping, reduce_lr]
-    )
-
-    test_loss, test_accuracy = model.evaluate(x_test, y_test)
-    print(f'Test Loss: {test_loss:.4f}')
-    print(f'Test Accuracy: {test_accuracy:.4f}')
-
-    plt.plot(history.history['accuracy'])
-    plt.plot(history.history['val_accuracy'])
-    plt.title('Model Accuracy')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
-    plt.legend(['Train', 'Val'], loc='upper left')
-    plt.show()
-
-if __name__ == "__main__":
-    main()
-
-
-
-
-
-# SM-GSLNN - Convolutional Self-Modeling Gated Spiking Liquid Neural Network
-# python csmgslnn_mnist.py
-# Test Accuracy: 0.9903
