@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Dropout, Flatten, Conv2D, GlobalAveragePooling2D, Reshape
-from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization
+from tensorflow.keras.layers import MultiHeadAttention, Add, LayerNormalization
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
@@ -81,6 +81,8 @@ def initialize_reservoir(input_dim, reservoir_dim, spectral_radius):
 class PositionalEncoding(tf.keras.layers.Layer):
     def __init__(self, max_position, d_model):
         super(PositionalEncoding, self).__init__()
+        self.max_position = max_position
+        self.d_model = d_model
         self.pos_encoding = self.positional_encoding(max_position, d_model)
         
     def get_angles(self, pos, i, d_model):
@@ -103,6 +105,18 @@ class PositionalEncoding(tf.keras.layers.Layer):
         seq_len = tf.shape(inputs)[1]
         return inputs + self.pos_encoding[:, :seq_len, :]
 
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'max_position': self.max_position,
+            'd_model': self.d_model
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(config['max_position'], config['d_model'])
+
 def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, d_model=64, num_heads=4, l2_reg=1e-4):
     inputs = Input(shape=input_shape)
 
@@ -119,17 +133,19 @@ def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_r
     pos_encoding_layer = PositionalEncoding(max_position=1, d_model=x.shape[-1])
     x = pos_encoding_layer(x)
 
+    # Multi-Head Attention for Relational Reasoning
     attention_output = MultiHeadAttention(num_heads=num_heads, key_dim=d_model)(x, x)
-    x = LayerNormalization(epsilon=1e-6)(x + attention_output)
+    attention_output = Add()([x, attention_output])
+    attention_output = LayerNormalization()(attention_output)
 
-    reservoir_weights, input_weights, gate_weights = initialize_reservoir(x.shape[-1], reservoir_dim, spectral_radius)
-
+    # Gated Spiking Reservoir Processing
+    spatiotemporal_reservoir_weights, spatiotemporal_input_weights, spiking_gate_weights = initialize_reservoir(x.shape[-1], reservoir_dim, spectral_radius)
     lnn_layer = tf.keras.layers.RNN(
-        GatedSLNNStep(reservoir_weights, input_weights, gate_weights, leak_rate, spike_threshold, max_reservoir_dim),
+        GatedSLNNStep(spatiotemporal_reservoir_weights, spatiotemporal_input_weights, spiking_gate_weights, leak_rate, spike_threshold, max_reservoir_dim),
         return_sequences=True
     )
 
-    lnn_output = lnn_layer(x)
+    lnn_output = lnn_layer(attention_output)
     lnn_output = Flatten()(lnn_output)
 
     x = Dense(128, activation='relu', kernel_regularizer=l2(l2_reg))(lnn_output)
