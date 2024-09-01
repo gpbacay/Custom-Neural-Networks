@@ -71,4 +71,4 @@ if __name__ == "__main__":
 
 # DSTR-CT-GSR - Dynamic Spatio-Tempo-Relational Convolutional Transformer with Gated Spiking Reservoir
 # python dstrctgsr_deploy.py
-# Remarks: 0.9930
+# Remarks: 0.9930 (Impressive)
