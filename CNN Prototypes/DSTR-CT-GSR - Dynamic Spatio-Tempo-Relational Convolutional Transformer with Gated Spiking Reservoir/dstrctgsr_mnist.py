@@ -63,9 +63,11 @@ def initialize_spatiotemporal_reservoir(input_dim, reservoir_dim, spectral_radiu
     spiking_gate_weights = np.random.randn(3 * reservoir_dim, input_dim) * 0.1
     return spatiotemporal_reservoir_weights, spatiotemporal_input_weights, spiking_gate_weights
 
-class SpatioTemporalPositionalEncoding(tf.keras.layers.Layer):
+class PositionalEncoding(tf.keras.layers.Layer):
     def __init__(self, max_position, d_model):
-        super(SpatioTemporalPositionalEncoding, self).__init__()
+        super(PositionalEncoding, self).__init__()
+        self.max_position = max_position
+        self.d_model = d_model
         self.pos_encoding = self.positional_encoding(max_position, d_model)
         
     def get_angles(self, pos, i, d_model):
@@ -88,6 +90,18 @@ class SpatioTemporalPositionalEncoding(tf.keras.layers.Layer):
         seq_len = tf.shape(inputs)[1]
         return inputs + self.pos_encoding[:, :seq_len, :]
 
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'max_position': self.max_position,
+            'd_model': self.d_model
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(config['max_position'], config['d_model'])
+
 def create_dstr_ct_gsr_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim, d_model=64, num_heads=4, l2_reg=1e-4):
     inputs = Input(shape=input_shape)
 
@@ -102,7 +116,7 @@ def create_dstr_ct_gsr_model(input_shape, reservoir_dim, spectral_radius, leak_r
 
     # Reshape and Apply Spatio-Temporal Positional Encoding
     x = Reshape((1, x.shape[-1]))(x)
-    pos_encoding_layer = SpatioTemporalPositionalEncoding(max_position=1, d_model=x.shape[-1])
+    pos_encoding_layer = PositionalEncoding(max_position=1, d_model=x.shape[-1])
     x = pos_encoding_layer(x)
 
     # Multi-Head Attention for Relational Reasoning
