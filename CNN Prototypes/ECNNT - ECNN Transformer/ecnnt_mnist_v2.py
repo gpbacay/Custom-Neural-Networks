@@ -142,5 +142,5 @@ if __name__ == "__main__":
 
 
 # Efficient CNN Transformer (ECNNT) with LoRA
-# python ecnnt_mnist.py
-# Test Accuracy: 0.9933
+# python ecnnt_mnist_v2.py
+# Test Accuracy: 0.9911
