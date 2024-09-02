@@ -52,7 +52,7 @@ class PositionalEncoding(tf.keras.layers.Layer):
 def create_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0.1):
     inputs = Input(shape=input_shape)
     
-    # Adaptive Convolutional Layers
+    # Enhanced Convolutional Layers
     def adaptive_conv(x, filters, kernel_size, strides=1):
         conv = Conv2D(filters, kernel_size=kernel_size, strides=strides, padding='same', use_bias=False)(x)
         norm = BatchNormalization()(conv)
@@ -61,6 +61,8 @@ def create_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0
     x = adaptive_conv(inputs, 32, kernel_size=3, strides=2)
     x = adaptive_conv(x, 64, kernel_size=3, strides=2)
     x = adaptive_conv(x, 128, kernel_size=3, strides=2)
+    x = adaptive_conv(x, 256, kernel_size=3, strides=2)
+    x = adaptive_conv(x, 512, kernel_size=3, strides=2)
     
     # Apply Global Average Pooling
     model_features = GlobalAveragePooling2D()(x)
@@ -72,13 +74,13 @@ def create_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0
 
     # Dynamic Self-Modeling Mechanism with Multi-Head Attention
     self_modeling_dense = Dense(d_model, activation='relu')(x)
-    attention_output = MultiHeadAttention(num_heads=4, key_dim=d_model)(self_modeling_dense, self_modeling_dense)
+    attention_output = MultiHeadAttention(num_heads=8, key_dim=d_model)(self_modeling_dense, self_modeling_dense)  # Increased number of heads
     self_modeling_output = Dense(model_features.shape[-1])(attention_output)
     
     x = Flatten()(x)
     
     # Final Classification Layers
-    x = Dense(128, activation='relu')(x)
+    x = Dense(256, activation='relu')(x)  # Increased layer size
     x = BatchNormalization()(x)
     x = Dropout(0.5)(x)
     classification_output = Dense(output_dim, activation='softmax')(x)
@@ -114,16 +116,6 @@ def load_and_preprocess_data():
 
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
-def contrastive_loss(margin=1.0):
-    def loss(y_true, y_pred):
-        labels = y_true[:, 0]
-        y_pred = tf.nn.l2_normalize(y_pred, axis=-1)
-        pos_pairs = tf.reduce_sum(labels * y_pred, axis=-1)
-        neg_pairs = tf.reduce_sum((1 - labels) * y_pred, axis=-1)
-        loss = tf.maximum(0.0, margin - pos_pairs + neg_pairs)
-        return tf.reduce_mean(loss)
-    return loss
-
 def main():
     input_shape = (28, 28, 1)
     output_dim = 10
@@ -147,9 +139,9 @@ def main():
     model = create_csm_model(input_shape, output_dim)
 
     # Callbacks
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3)
-    lr_schedule = tf.keras.callbacks.LearningRateScheduler(lambda epoch: 1e-4 * (0.1 ** (epoch // 5)))
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2)
+    lr_schedule = tf.keras.callbacks.LearningRateScheduler(lambda epoch: 1e-4 * (0.5 ** (epoch // 5)))
 
     # Train the Model
     model.fit(
@@ -168,8 +160,6 @@ if __name__ == "__main__":
 
 
 
-
-
 # Convolutional Self-Modeling Transformer (CSMT)
 # python csmt_mnist.py
-# Test Accuracy: 0.9570
+# Test Accuracy: 0.9864
