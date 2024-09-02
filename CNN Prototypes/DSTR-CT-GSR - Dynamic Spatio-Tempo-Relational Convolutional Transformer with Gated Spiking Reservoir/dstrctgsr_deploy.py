@@ -6,7 +6,7 @@ from dstrctgsr_model import GatedSLNNStep
 
 # Load the trained model
 try:
-    MODEL_FILEPATH = 'Trained Models/dstrctgsr_mnist_v2.keras'
+    MODEL_FILEPATH = 'Trained Models/dstrctgsr_mnist.keras'
     model = load_model(MODEL_FILEPATH, custom_objects={'GatedSLNNStep': GatedSLNNStep})
     print("Model loaded successfully.")
 except FileNotFoundError:

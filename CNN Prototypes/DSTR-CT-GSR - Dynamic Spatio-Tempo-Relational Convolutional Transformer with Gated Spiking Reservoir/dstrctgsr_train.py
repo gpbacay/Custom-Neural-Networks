@@ -40,7 +40,7 @@ def main():
     print(f"Test Accuracy: {test_accuracy:.4f}")
 
     # Save Model
-    model.save('Trained Models/dstrctgsr_mnist_v2.keras')
+    model.save('Trained Models/dstrctgsr_mnist.keras')
 
 if __name__ == "__main__":
     main()
