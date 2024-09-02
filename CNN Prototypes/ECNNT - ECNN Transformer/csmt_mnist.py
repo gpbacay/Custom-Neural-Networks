@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D, Dropout, BatchNormalization, Reshape, MultiHeadAttention
 from tensorflow.keras.models import Model
@@ -8,7 +9,47 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-def create_smect_model(input_shape, output_dim, d_model=64, self_modeling_weight=0.1):
+class PositionalEncoding(tf.keras.layers.Layer):
+    def __init__(self, max_position, d_model):
+        super(PositionalEncoding, self).__init__()
+        self.max_position = max_position
+        self.d_model = d_model
+        self.pos_encoding = self.positional_encoding(max_position, d_model)
+        
+    def get_angles(self, pos, i, d_model):
+        angle_rates = 1 / np.power(10000, (2 * (i // 2)) / np.float32(d_model))
+        return pos * angle_rates
+
+    def positional_encoding(self, max_position, d_model):
+        angle_rads = self.get_angles(np.arange(max_position)[:, np.newaxis],
+                                     np.arange(d_model)[np.newaxis, :],
+                                     d_model)
+
+        angle_rads[:, 0::2] = np.sin(angle_rads[:, 0::2])
+        angle_rads[:, 1::2] = np.cos(angle_rads[:, 1::2])
+
+        pos_encoding = angle_rads[np.newaxis, ...]
+
+        return tf.cast(pos_encoding, dtype=tf.float32)
+
+    def call(self, inputs):
+        seq_len = tf.shape(inputs)[1]
+        pos_encoding = self.pos_encoding[:, :seq_len, :]
+        return inputs + pos_encoding
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'max_position': self.max_position,
+            'd_model': self.d_model
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(config['max_position'], config['d_model'])
+
+def create_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0.1):
     inputs = Input(shape=input_shape)
     
     # Adaptive Convolutional Layers
@@ -24,6 +65,10 @@ def create_smect_model(input_shape, output_dim, d_model=64, self_modeling_weight
     # Apply Global Average Pooling
     model_features = GlobalAveragePooling2D()(x)
     x = Reshape((1, model_features.shape[-1]))(model_features)  # Add seq_len dimension for Dense layer
+
+    # Add Positional Encoding
+    pos_encoding_layer = PositionalEncoding(max_position=1, d_model=model_features.shape[-1])
+    x = pos_encoding_layer(x)
 
     # Dynamic Self-Modeling Mechanism with Multi-Head Attention
     self_modeling_dense = Dense(d_model, activation='relu')(x)
@@ -99,7 +144,7 @@ def main():
     )
     datagen.fit(x_train)
 
-    model = create_smect_model(input_shape, output_dim)
+    model = create_csm_model(input_shape, output_dim)
 
     # Callbacks
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
@@ -124,6 +169,7 @@ if __name__ == "__main__":
 
 
 
+
 # Convolutional Self-Modeling Transformer (CSMT)
 # python csmt_mnist.py
-# Test Accuracy: 0.9541
+# Test Accuracy: 0.9570
