@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D, Dropout, Reshape
-from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization, Lambda
+from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization, BatchNormalization, Add
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
@@ -12,53 +12,59 @@ warnings.filterwarnings('ignore')
 def efficientnet_block(inputs, filters, expansion_factor, stride):
     expanded_filters = filters * expansion_factor
     x = Conv2D(expanded_filters, kernel_size=1, padding='same', use_bias=False)(inputs)
-    x = tf.keras.layers.BatchNormalization()(x)
+    x = BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
     x = Conv2D(expanded_filters, kernel_size=3, padding='same', strides=stride, use_bias=False)(x)
-    x = tf.keras.layers.BatchNormalization()(x)
+    x = BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
     x = Conv2D(filters, kernel_size=1, padding='same', use_bias=False)(x)
-    x = tf.keras.layers.BatchNormalization()(x)
+    x = BatchNormalization()(x)
     if stride == 1 and inputs.shape[-1] == x.shape[-1]:
-        x = tf.keras.layers.Add()([inputs, x])
+        x = Add()([inputs, x])
     return x
 
-def self_modeling_layer(inputs):
-    # Apply a custom self-modeling mechanism
-    scaling_factor = tf.reduce_mean(inputs, axis=[1, 2], keepdims=True)
-    scaled_inputs = inputs * scaling_factor
-    return scaled_inputs
-
-def create_smect_model(input_shape, output_dim, d_model=64, num_heads=4):
+def create_smect_model(input_shape, output_dim, d_model=64, num_heads=4, self_modeling_weight=0.1):
     inputs = Input(shape=input_shape)
     
     # EfficientNet-based Convolutional layers for feature extraction
     x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False)(inputs)
-    x = tf.keras.layers.BatchNormalization()(x)
+    x = BatchNormalization()(x)
     x = tf.keras.layers.ReLU()(x)
     x = efficientnet_block(x, 16, expansion_factor=1, stride=1)
     x = efficientnet_block(x, 24, expansion_factor=6, stride=2)
     x = efficientnet_block(x, 40, expansion_factor=6, stride=2)
     
     # Apply self-modeling layer
-    x = Lambda(self_modeling_layer)(x)
-    
-    # Prepare for Transformer layer
-    x = GlobalAveragePooling2D()(x)
-    x = Reshape((1, x.shape[-1]))(x)  # Add seq_len dimension for MultiHeadAttention
+    model_features = GlobalAveragePooling2D()(x)
+    x = Reshape((1, model_features.shape[-1]))(model_features)  # Add seq_len dimension for MultiHeadAttention
     
     # Transformer-based Multi-Head Attention layer
     attention_output = MultiHeadAttention(num_heads=num_heads, key_dim=d_model)(x, x)
     x = LayerNormalization(epsilon=1e-6)(x + attention_output)
     
+    # Dynamic Self-Modeling Mechanism
+    self_modeling_dense = Dense(d_model, activation='relu')(x)
+    self_modeling_output = Dense(model_features.shape[-1])(self_modeling_dense)
+    
     x = Flatten()(x)
     
     # Final classification layers
     x = Dense(128, activation='relu')(x)
+    x = BatchNormalization()(x)
     x = Dropout(0.5)(x)
-    outputs = Dense(output_dim, activation='softmax')(x)
+    classification_output = Dense(output_dim, activation='softmax')(x)
 
-    model = Model(inputs, outputs)
+    # Create the model with two outputs
+    model = Model(inputs, [classification_output, self_modeling_output])
+
+    # Compile the model with a combined loss function and multiple metrics
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), 
+        loss=['categorical_crossentropy', 'mse'],  # Classification loss + Self-modeling loss
+        loss_weights=[1.0, self_modeling_weight],  # Weight for the self-modeling task
+        metrics=[['accuracy'], ['mse']]  # Metrics for each output
+    )
+    
     return model
 
 def load_and_preprocess_data():
@@ -89,11 +95,11 @@ def main():
     
     # Data augmentation
     datagen = tf.keras.preprocessing.image.ImageDataGenerator(
-        rotation_range=10,
-        width_shift_range=0.1,
-        height_shift_range=0.1,
-        shear_range=0.1,
-        zoom_range=0.1,
+        rotation_range=15,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        shear_range=0.2,
+        zoom_range=0.2,
         horizontal_flip=False,
         fill_mode='nearest'
     )
@@ -104,15 +110,17 @@ def main():
     # Callbacks
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
     reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3)
+    lr_schedule = tf.keras.callbacks.LearningRateScheduler(lambda epoch: 1e-4 * (0.1 ** (epoch // 5)))
 
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    # Train the model
     model.fit(
         datagen.flow(x_train, y_train, batch_size=batch_size),
         epochs=num_epochs,
         validation_data=(x_val, y_val),
-        callbacks=[early_stopping, reduce_lr]
+        callbacks=[early_stopping, reduce_lr, lr_schedule]
     )
 
+    # Evaluate the model
     test_loss, test_accuracy = model.evaluate(x_test, y_test)
     print(f'Test accuracy: {test_accuracy:.4f}')
 
@@ -121,6 +129,9 @@ if __name__ == "__main__":
 
 
 
+
+
+
 # Self-Modeling Efficient Convolutional Transformer (SMECT)
-# python smecnnt_mnist.py
-# Test Accuracy: 0.9942
+# python smect_mnist.py
+# Test Accuracy: 0.9855
