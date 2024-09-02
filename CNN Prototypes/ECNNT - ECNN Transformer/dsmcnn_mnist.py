@@ -1,6 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D, Dropout, Reshape, Layer
-from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization, BatchNormalization, Add
+from tensorflow.keras.layers import BatchNormalization, Add
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
@@ -68,7 +68,7 @@ def efficientnet_block(inputs, filters, expansion_factor, stride):
         x = Add()([inputs, x])
     return x
 
-def create_smect_model(input_shape, output_dim, d_model=64, num_heads=4, self_modeling_weight=0.1):
+def create_smect_model(input_shape, output_dim, d_model=64, self_modeling_weight=0.1):
     inputs = Input(shape=input_shape)
     
     # EfficientNet-based Convolutional layers for feature extraction
@@ -81,11 +81,7 @@ def create_smect_model(input_shape, output_dim, d_model=64, num_heads=4, self_mo
     
     # Apply self-modeling layer
     model_features = GlobalAveragePooling2D()(x)
-    x = Reshape((1, model_features.shape[-1]))(model_features)  # Add seq_len dimension for MultiHeadAttention
-    
-    # Transformer-based Multi-Head Attention layer
-    attention_output = MultiHeadAttention(num_heads=num_heads, key_dim=d_model)(x, x)
-    x = LayerNormalization(epsilon=1e-6)(x + attention_output)
+    x = Reshape((1, model_features.shape[-1]))(model_features)  # Add seq_len dimension for further processing
     
     # Dynamic Self-Modeling Mechanism
     self_modeling_dense = Dense(d_model, activation='relu')(x)
@@ -174,17 +170,21 @@ def main():
     test_loss = eval_results[0]
     self_modeling_loss = eval_results[1]
     meta_feature_loss = eval_results[2] if len(eval_results) > 2 else None
+    test_accuracy = eval_results[3] if len(eval_results) > 3 else None
 
     print(f'Test loss: {test_loss:.4f}')
     print(f'Self-modeling loss: {self_modeling_loss:.4f}')
     if meta_feature_loss is not None:
         print(f'Meta-feature loss: {meta_feature_loss:.4f}')
+    if test_accuracy is not None:
+        print(f'Test accuracy: {test_accuracy:.4f}')
 
 if __name__ == "__main__":
     main()
 
 
 
-# Self-Modeling Efficient Convolutional Transformer (SMECT)
-# python smect_mnist.py
+
+# Dynamic Self-Modeling Convolutional Neural Network (DSM-CNN)
+# python dsmcnn_mnist.py
 # Test Accuracy: 0.9853
