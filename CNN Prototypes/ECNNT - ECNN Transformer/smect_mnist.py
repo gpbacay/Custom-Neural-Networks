@@ -1,13 +1,58 @@
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D, Dropout, Reshape
+from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D, Dropout, Reshape, Layer
 from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization, BatchNormalization, Add
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
+import numpy as np
 import warnings
 
 warnings.filterwarnings('ignore')
+
+class SelfModelingMechanism:
+    def __init__(self, initial_reservoir_dim, max_reservoir_dim, min_reservoir_dim):
+        self.reservoir_dim = initial_reservoir_dim
+        self.max_reservoir_dim = max_reservoir_dim
+        self.min_reservoir_dim = min_reservoir_dim
+        self.performance_history = []
+        self.structure_history = []
+        self.num_meta_features = 4
+
+    def adapt(self, performance):
+        self.performance_history.append(performance)
+        self.structure_history.append(self.reservoir_dim)
+
+        if len(self.performance_history) >= 5:
+            recent_trend = np.mean(self.performance_history[-5:]) - np.mean(self.performance_history[-10:-5])
+
+            if recent_trend > 0.01:
+                self.reservoir_dim = min(int(self.reservoir_dim * 1.1), self.max_reservoir_dim)
+            elif recent_trend < -0.01:
+                self.reservoir_dim = max(int(self.reservoir_dim * 0.9), self.min_reservoir_dim)
+
+        return self.reservoir_dim
+
+    def get_meta_features(self):
+        if len(self.performance_history) < 10:
+            return [0.0, 0.0, self.reservoir_dim / self.max_reservoir_dim, 0.0]
+        return [
+            np.mean(self.performance_history[-10:]),
+            np.std(self.performance_history[-10:]),
+            self.reservoir_dim / self.max_reservoir_dim,
+            np.mean(self.structure_history[-10:]) / self.max_reservoir_dim
+        ]
+
+class MetaFeatureLayer(Layer):
+    def __init__(self, self_modeling_mechanism, **kwargs):
+        super().__init__(**kwargs)
+        self.self_modeling_mechanism = self_modeling_mechanism
+
+    def call(self, inputs):
+        meta_features = self.self_modeling_mechanism.get_meta_features()
+        meta_features = tf.convert_to_tensor(meta_features, dtype=tf.float32)
+        meta_features = tf.reshape(meta_features, (1, -1))
+        return tf.tile(meta_features, [tf.shape(inputs)[0], 1])
 
 def efficientnet_block(inputs, filters, expansion_factor, stride):
     expanded_filters = filters * expansion_factor
@@ -46,6 +91,10 @@ def create_smect_model(input_shape, output_dim, d_model=64, num_heads=4, self_mo
     self_modeling_dense = Dense(d_model, activation='relu')(x)
     self_modeling_output = Dense(model_features.shape[-1])(self_modeling_dense)
     
+    # Integrate MetaFeatureLayer
+    self_modeling_mechanism = SelfModelingMechanism(initial_reservoir_dim=128, max_reservoir_dim=512, min_reservoir_dim=64)
+    meta_feature_layer = MetaFeatureLayer(self_modeling_mechanism)(x)
+    
     x = Flatten()(x)
     
     # Final classification layers
@@ -54,15 +103,15 @@ def create_smect_model(input_shape, output_dim, d_model=64, num_heads=4, self_mo
     x = Dropout(0.5)(x)
     classification_output = Dense(output_dim, activation='softmax')(x)
 
-    # Create the model with two outputs
-    model = Model(inputs, [classification_output, self_modeling_output])
+    # Create the model with three outputs
+    model = Model(inputs, [classification_output, self_modeling_output, meta_feature_layer])
 
     # Compile the model with a combined loss function and multiple metrics
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), 
-        loss=['categorical_crossentropy', 'mse'],  # Classification loss + Self-modeling loss
-        loss_weights=[1.0, self_modeling_weight],  # Weight for the self-modeling task
-        metrics=[['accuracy'], ['mse']]  # Metrics for each output
+        loss=['categorical_crossentropy', 'mse', 'mse'],  # Classification loss + Self-modeling loss + Meta-feature loss
+        loss_weights=[1.0, self_modeling_weight, 0.0],  # Weight for the self-modeling task, meta-feature loss can be adjusted
+        metrics=[['accuracy'], ['mse'], ['mse']]  # Metrics for each output
     )
     
     return model
@@ -121,17 +170,21 @@ def main():
     )
 
     # Evaluate the model
-    test_loss, test_accuracy = model.evaluate(x_test, y_test)
-    print(f'Test accuracy: {test_accuracy:.4f}')
+    eval_results = model.evaluate(x_test, y_test)
+    test_loss = eval_results[0]
+    self_modeling_loss = eval_results[1]
+    meta_feature_loss = eval_results[2] if len(eval_results) > 2 else None
+
+    print(f'Test loss: {test_loss:.4f}')
+    print(f'Self-modeling loss: {self_modeling_loss:.4f}')
+    if meta_feature_loss is not None:
+        print(f'Meta-feature loss: {meta_feature_loss:.4f}')
 
 if __name__ == "__main__":
     main()
 
 
 
-
-
-
 # Self-Modeling Efficient Convolutional Transformer (SMECT)
 # python smect_mnist.py
-# Test Accuracy: 0.9855
+# Test Accuracy: 0.9853
