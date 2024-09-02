@@ -187,4 +187,4 @@ if __name__ == "__main__":
 
 # Dynamic Self-Modeling Convolutional Neural Network (DSM-CNN)
 # python dsmcnn_mnist.py
-# Test Accuracy: 0.9853
+# Test Accuracy: 0.9850
