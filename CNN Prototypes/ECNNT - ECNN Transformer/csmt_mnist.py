@@ -100,6 +100,7 @@ class AdaptiveGatedSLNNStep(Layer):
         )
 
     def call(self, inputs, states):
+        # Ensure inputs and states have the correct shape
         inputs = tf.squeeze(inputs, axis=1)  # Remove the extra dimension
         prev_state = tf.squeeze(states[0], axis=1)[:, :self.reservoir_dim]
 
@@ -162,15 +163,15 @@ def create_csmt_model(input_shape, output_dim, d_model=64, self_modeling_weight=
     # Dynamic Self-Modeling Mechanism with Multi-Head Attention
     self_modeling_dense = Dense(d_model, activation='relu')(adjusted_weights)
     attention_output = MultiHeadAttention(num_heads=8, key_dim=d_model)(self_modeling_dense, self_modeling_dense)
-    self_modeling_output = Dense(output_dim, name='self_modeling_output')(attention_output)  # Named output for self-modeling
+    self_modeling_output = Dense(model_features.shape[-1])(attention_output)
 
     # Adding the Adaptive Gated SLNN Step Layer
     reservoir_layer = AdaptiveGatedSLNNStep(
-        reservoir_dim=512,
+        reservoir_dim=512,  # Match this with the input dimension
         input_dim=adjusted_weights.shape[-1],
         leak_rate=0.5,
         spike_threshold=0.2,
-        max_reservoir_dim=512
+        max_reservoir_dim=512  # Match this with the reservoir_dim
     )
 
     reservoir_output, _ = reservoir_layer(adjusted_weights, states=[adjusted_weights])
@@ -182,7 +183,7 @@ def create_csmt_model(input_shape, output_dim, d_model=64, self_modeling_weight=
     x = Dense(256, activation='relu')(x)
     x = BatchNormalization()(x)
     x = Dropout(0.5)(x)
-    classification_output = Dense(output_dim, activation='softmax', name='classification_output')(x)  # Named output for classification
+    classification_output = Dense(output_dim, activation='softmax')(x)
 
     # Create the Model with Two Outputs
     model = Model(inputs, [classification_output, self_modeling_output])
@@ -190,9 +191,9 @@ def create_csmt_model(input_shape, output_dim, d_model=64, self_modeling_weight=
     # Compile the Model with a Combined Loss Function and Multiple Metrics
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), 
-        loss={'classification_output': 'categorical_crossentropy', 'self_modeling_output': 'mse'},  # Corrected names
-        loss_weights={'classification_output': 1.0, 'self_modeling_output': self_modeling_weight},  # Adjust as needed
-        metrics={'classification_output': 'accuracy'}
+        loss=['categorical_crossentropy', 'mse'],  # Classification loss + Self-modeling loss
+        loss_weights=[1.0, self_modeling_weight],  # Weight for the Self-modeling task
+        metrics=[['accuracy'], ['mse']]  # Metrics for each output
     )
     
     return model
@@ -200,36 +201,64 @@ def create_csmt_model(input_shape, output_dim, d_model=64, self_modeling_weight=
 # Data Loading and Preprocessing
 def load_and_preprocess_data():
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train, x_test = x_train.astype('float32') / 255.0, x_test.astype('float32') / 255.0
-    x_train = np.expand_dims(x_train, axis=-1)
-    x_test = np.expand_dims(x_test, axis=-1)
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
+
+    x_train = x_train.astype('float32') / 255.0
+    x_val = x_val.astype('float32') / 255.0
+    x_test = x_test.astype('float32') / 255.0
+
+    x_train = x_train[..., tf.newaxis]
+    x_val = x_val[..., tf.newaxis]
+    x_test = x_test[..., tf.newaxis]
+
     y_train = to_categorical(y_train, 10)
+    y_val = to_categorical(y_val, 10)
     y_test = to_categorical(y_test, 10)
-    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
+
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
-# Training the Model
+# Main Training Function
 def main():
+    input_shape = (28, 28, 1)
+    output_dim = 10
+    num_epochs = 10
+    batch_size = 64
+
     (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_and_preprocess_data()
     
-    model = create_csmt_model(input_shape=(28, 28, 1), output_dim=10)
-    
-    history = model.fit(
-        x_train, 
-        [y_train, y_train],  # Replace with the actual targets for both outputs
-        validation_data=(x_val, [y_val, y_val]),
-        epochs=10,
-        batch_size=64
+    # Data Augmentation
+    datagen = tf.keras.preprocessing.image.ImageDataGenerator(
+        rotation_range=15,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=False,
+        fill_mode='nearest'
     )
-    
-    # Evaluate the model
-    test_loss, test_accuracy, _ = model.evaluate(x_test, [y_test, y_test])
-    print(f'Test Loss: {test_loss}')
-    print(f'Test Accuracy: {test_accuracy}')
+    datagen.fit(x_train)
+
+    model = create_csmt_model(input_shape, output_dim)
+
+    # Callbacks
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2)
+    lr_schedule = tf.keras.callbacks.LearningRateScheduler(lambda epoch: 1e-4 * (0.5 ** (epoch // 5)))
+
+    # Train the Model
+    model.fit(
+        datagen.flow(x_train, y_train, batch_size=batch_size),
+        epochs=num_epochs,
+        validation_data=(x_val, y_val),
+        callbacks=[early_stopping, reduce_lr, lr_schedule]
+    )
+
+    # Evaluate the Model
+    test_loss, test_accuracy = model.evaluate(x_test, y_test)
+    print(f'Test accuracy: {test_accuracy:.4f}')
 
 if __name__ == "__main__":
     main()
-
 
 
 # Convolutional Self-Modeling Transformer (CSMT)
