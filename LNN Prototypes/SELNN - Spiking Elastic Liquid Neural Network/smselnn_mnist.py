@@ -225,4 +225,4 @@ if __name__ == "__main__":
 
 # Self-Modeling Spiking Elastic Liquid Nueral Network (SMSELNN)
 # python smselnn_mnist.py
-# Test Accuracy: 0.9127 (fast)
+# Test Accuracy: 0.9147 (fast)
