@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D, Dropout, BatchNormalization, Reshape, MultiHeadAttention
+from tensorflow.keras.layers import Dense, Input, Flatten, Conv2D, GlobalAveragePooling2D, Dropout, BatchNormalization, Reshape, MultiHeadAttention, Layer
 from tensorflow.keras.models import Model
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
@@ -9,6 +9,7 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+# Positional Encoding Layer
 class PositionalEncoding(tf.keras.layers.Layer):
     def __init__(self, max_position, d_model):
         super(PositionalEncoding, self).__init__()
@@ -50,9 +51,9 @@ class PositionalEncoding(tf.keras.layers.Layer):
         return cls(config['max_position'], config['d_model'])
 
 # Meta-Learning Mechanism
-class MetaLearner(tf.keras.layers.Layer):
+class MetaLearningMechanism(tf.keras.layers.Layer):
     def __init__(self, learning_rate=0.001):
-        super(MetaLearner, self).__init__()
+        super(MetaLearningMechanism, self).__init__()
         self.learning_rate = learning_rate
         self.meta_weight = self.add_weight(shape=(), initializer="ones", trainable=True)
     
@@ -68,7 +69,69 @@ class MetaLearner(tf.keras.layers.Layer):
         config.update({'learning_rate': self.learning_rate})
         return config
 
-# Improved Convolutional Self-Modeling Transformer (CSMT) with Meta-Learning
+# Adaptive Gated Spiking Liquid Neural Network (GSLNN) Step
+class AdaptiveGatedSLNNStep(Layer):
+    def __init__(self, reservoir_dim, input_dim, leak_rate, spike_threshold, max_reservoir_dim, **kwargs):
+        super().__init__(**kwargs)
+        self.reservoir_dim = reservoir_dim
+        self.input_dim = input_dim
+        self.leak_rate = leak_rate
+        self.spike_threshold = spike_threshold
+        self.max_reservoir_dim = max_reservoir_dim
+
+    def build(self, input_shape):
+        self.reservoir_weights = self.add_weight(
+            shape=(self.max_reservoir_dim, self.max_reservoir_dim),
+            initializer='glorot_uniform',
+            name='reservoir_weights',
+            trainable=True
+        )
+        self.input_weights = self.add_weight(
+            shape=(self.max_reservoir_dim, self.input_dim),
+            initializer='glorot_uniform',
+            name='input_weights',
+            trainable=True
+        )
+        self.gate_weights = self.add_weight(
+            shape=(3 * self.max_reservoir_dim, self.input_dim),
+            initializer='glorot_uniform',
+            name='gate_weights',
+            trainable=True
+        )
+
+    def call(self, inputs, states):
+        inputs = tf.squeeze(inputs, axis=1)  # Remove the extra dimension
+        prev_state = tf.squeeze(states[0], axis=1)[:, :self.reservoir_dim]
+
+        input_part = tf.matmul(inputs, self.input_weights[:self.reservoir_dim, :], transpose_b=True)
+        reservoir_part = tf.matmul(prev_state, self.reservoir_weights[:self.reservoir_dim, :self.reservoir_dim])
+        gate_part = tf.matmul(inputs, self.gate_weights[:3 * self.reservoir_dim, :], transpose_b=True)
+
+        i_gate, f_gate, o_gate = tf.split(tf.sigmoid(gate_part), 3, axis=-1)
+
+        state = (1 - self.leak_rate) * (f_gate * prev_state) + self.leak_rate * tf.tanh(i_gate * (input_part + reservoir_part))
+        state = o_gate * state
+
+        spikes = tf.cast(tf.greater(state, self.spike_threshold), dtype=tf.float32)
+        state = tf.where(spikes > 0, state - self.spike_threshold, state)
+
+        padded_state = tf.pad(state, [[0, 0], [0, self.max_reservoir_dim - self.reservoir_dim]])
+        padded_state = tf.expand_dims(padded_state, axis=1)  # Add back the time dimension
+
+        return padded_state, [padded_state]
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            "reservoir_dim": self.reservoir_dim,
+            "input_dim": self.input_dim,
+            "leak_rate": self.leak_rate,
+            "spike_threshold": self.spike_threshold,
+            "max_reservoir_dim": self.max_reservoir_dim
+        })
+        return config
+
+# Improved Convolutional Self-Modeling Transformer (CSMT) with Meta-Learning and GSLNN
 def create_csmt_model(input_shape, output_dim, d_model=64, self_modeling_weight=0.1):
     inputs = Input(shape=input_shape)
     
@@ -93,22 +156,33 @@ def create_csmt_model(input_shape, output_dim, d_model=64, self_modeling_weight=
     x = pos_encoding_layer(x)
 
     # Self-Modeling Component: Meta-Learning Mechanism for Adaptive Weights
-    meta_learner = MetaLearner()
+    meta_learner = MetaLearningMechanism()
     adjusted_weights, _ = meta_learner(x, gradients=x)
 
     # Dynamic Self-Modeling Mechanism with Multi-Head Attention
     self_modeling_dense = Dense(d_model, activation='relu')(adjusted_weights)
-    attention_output = MultiHeadAttention(num_heads=8, key_dim=d_model)(self_modeling_dense, self_modeling_dense)  # Increased number of heads
-    self_modeling_output = Dense(model_features.shape[-1])(attention_output)
+    attention_output = MultiHeadAttention(num_heads=8, key_dim=d_model)(self_modeling_dense, self_modeling_dense)
+    self_modeling_output = Dense(output_dim, name='self_modeling_output')(attention_output)  # Named output for self-modeling
+
+    # Adding the Adaptive Gated SLNN Step Layer
+    reservoir_layer = AdaptiveGatedSLNNStep(
+        reservoir_dim=512,
+        input_dim=adjusted_weights.shape[-1],
+        leak_rate=0.5,
+        spike_threshold=0.2,
+        max_reservoir_dim=512
+    )
+
+    reservoir_output, _ = reservoir_layer(adjusted_weights, states=[adjusted_weights])
 
     # Final Flattening for classification
-    x = Flatten()(x)
+    x = Flatten()(reservoir_output)
     
     # Final Classification Layers
-    x = Dense(256, activation='relu')(x)  # Increased layer size
+    x = Dense(256, activation='relu')(x)
     x = BatchNormalization()(x)
     x = Dropout(0.5)(x)
-    classification_output = Dense(output_dim, activation='softmax')(x)
+    classification_output = Dense(output_dim, activation='softmax', name='classification_output')(x)  # Named output for classification
 
     # Create the Model with Two Outputs
     model = Model(inputs, [classification_output, self_modeling_output])
@@ -116,9 +190,9 @@ def create_csmt_model(input_shape, output_dim, d_model=64, self_modeling_weight=
     # Compile the Model with a Combined Loss Function and Multiple Metrics
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4), 
-        loss=['categorical_crossentropy', 'mse'],  # Classification loss + Self-modeling loss
-        loss_weights=[1.0, self_modeling_weight],  # Weight for the Self-modeling task
-        metrics=[['accuracy'], ['mse']]  # Metrics for each output
+        loss={'classification_output': 'categorical_crossentropy', 'self_modeling_output': 'mse'},  # Corrected names
+        loss_weights={'classification_output': 1.0, 'self_modeling_output': self_modeling_weight},  # Adjust as needed
+        metrics={'classification_output': 'accuracy'}
     )
     
     return model
@@ -126,66 +200,35 @@ def create_csmt_model(input_shape, output_dim, d_model=64, self_modeling_weight=
 # Data Loading and Preprocessing
 def load_and_preprocess_data():
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
-
-    x_train = x_train.astype('float32') / 255.0
-    x_val = x_val.astype('float32') / 255.0
-    x_test = x_test.astype('float32') / 255.0
-
-    x_train = x_train[..., tf.newaxis]
-    x_val = x_val[..., tf.newaxis]
-    x_test = x_test[..., tf.newaxis]
-
+    x_train, x_test = x_train.astype('float32') / 255.0, x_test.astype('float32') / 255.0
+    x_train = np.expand_dims(x_train, axis=-1)
+    x_test = np.expand_dims(x_test, axis=-1)
     y_train = to_categorical(y_train, 10)
-    y_val = to_categorical(y_val, 10)
     y_test = to_categorical(y_test, 10)
-
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
-# Main Training Function
+# Training the Model
 def main():
-    input_shape = (28, 28, 1)
-    output_dim = 10
-    num_epochs = 10
-    batch_size = 64
-
     (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_and_preprocess_data()
     
-    # Data Augmentation
-    datagen = tf.keras.preprocessing.image.ImageDataGenerator(
-        rotation_range=15,
-        width_shift_range=0.2,
-        height_shift_range=0.2,
-        shear_range=0.2,
-        zoom_range=0.2,
-        horizontal_flip=False,
-        fill_mode='nearest'
+    model = create_csmt_model(input_shape=(28, 28, 1), output_dim=10)
+    
+    history = model.fit(
+        x_train, 
+        [y_train, y_train],  # Replace with the actual targets for both outputs
+        validation_data=(x_val, [y_val, y_val]),
+        epochs=10,
+        batch_size=64
     )
-    datagen.fit(x_train)
-
-    model = create_csmt_model(input_shape, output_dim)
-
-    # Callbacks
-    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
-    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=2)
-    lr_schedule = tf.keras.callbacks.LearningRateScheduler(lambda epoch: 1e-4 * (0.5 ** (epoch // 5)))
-
-    # Train the Model
-    model.fit(
-        datagen.flow(x_train, y_train, batch_size=batch_size),
-        epochs=num_epochs,
-        validation_data=(x_val, y_val),
-        callbacks=[early_stopping, reduce_lr, lr_schedule]
-    )
-
-    # Evaluate the Model
-    test_loss, test_accuracy = model.evaluate(x_test, y_test)
-    print(f'Test accuracy: {test_accuracy:.4f}')
+    
+    # Evaluate the model
+    test_loss, test_accuracy, _ = model.evaluate(x_test, [y_test, y_test])
+    print(f'Test Loss: {test_loss}')
+    print(f'Test Accuracy: {test_accuracy}')
 
 if __name__ == "__main__":
     main()
-
-
 
 
 

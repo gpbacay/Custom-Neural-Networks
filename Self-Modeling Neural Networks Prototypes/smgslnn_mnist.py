@@ -99,9 +99,24 @@ class AdaptiveGatedSLNNStep(Layer):
 
         return padded_state, [padded_state]
 
-    @property
-    def state_size(self):
-        return (self.max_reservoir_dim,)
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            "leak_rate": self.leak_rate,
+            "spike_threshold": self.spike_threshold,
+            "max_dynamic_reservoir_dim": self.max_dynamic_reservoir_dim,
+            "spatiotemporal_reservoir_weights": self.spatiotemporal_reservoir_weights.tolist(),
+            "spatiotemporal_input_weights": self.spatiotemporal_input_weights.tolist(),
+            "spiking_gate_weights": self.spiking_gate_weights.tolist()
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        spatiotemporal_reservoir_weights = np.array(config.pop('spatiotemporal_reservoir_weights'))
+        spatiotemporal_input_weights = np.array(config.pop('spatiotemporal_input_weights'))
+        spiking_gate_weights = np.array(config.pop('spiking_gate_weights'))
+        return cls(spatiotemporal_reservoir_weights, spatiotemporal_input_weights, spiking_gate_weights, **config)
 
 class MetaFeatureLayer(Layer):
     def __init__(self, self_modeling_mechanism, **kwargs):
