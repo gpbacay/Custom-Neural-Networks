@@ -69,7 +69,7 @@ class MetaLearner(tf.keras.layers.Layer):
         return config
 
 # Improved Convolutional Self-Modeling Transformer (CSMT) with Meta-Learning
-def create_self_modeling_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0.1):
+def create_csmt_model(input_shape, output_dim, d_model=64, self_modeling_weight=0.1):
     inputs = Input(shape=input_shape)
     
     # Enhanced Convolutional Layers
@@ -163,7 +163,7 @@ def main():
     )
     datagen.fit(x_train)
 
-    model = create_self_modeling_csm_model(input_shape, output_dim)
+    model = create_csmt_model(input_shape, output_dim)
 
     # Callbacks
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
@@ -191,4 +191,4 @@ if __name__ == "__main__":
 
 # Convolutional Self-Modeling Transformer (CSMT)
 # python csmt_mnist.py
-# Test Accuracy: 0.9856
+# Test Accuracy: 0.9855
