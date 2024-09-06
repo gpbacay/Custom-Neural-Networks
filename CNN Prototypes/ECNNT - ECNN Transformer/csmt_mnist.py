@@ -49,7 +49,27 @@ class PositionalEncoding(tf.keras.layers.Layer):
     def from_config(cls, config):
         return cls(config['max_position'], config['d_model'])
 
-def create_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0.1):
+# Meta-Learning Mechanism
+class MetaLearner(tf.keras.layers.Layer):
+    def __init__(self, learning_rate=0.001):
+        super(MetaLearner, self).__init__()
+        self.learning_rate = learning_rate
+        self.meta_weight = self.add_weight(shape=(), initializer="ones", trainable=True)
+    
+    def call(self, inputs, gradients):
+        # Adjust the input weights based on the meta-learning weights
+        adjusted_weights = inputs * self.meta_weight
+        # Adjust learning rate dynamically
+        adjusted_gradients = gradients * self.meta_weight
+        return adjusted_weights, adjusted_gradients
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({'learning_rate': self.learning_rate})
+        return config
+
+# Improved Convolutional Self-Modeling Transformer (CSMT) with Meta-Learning
+def create_self_modeling_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0.1):
     inputs = Input(shape=input_shape)
     
     # Enhanced Convolutional Layers
@@ -59,7 +79,7 @@ def create_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0
         return tf.keras.layers.ReLU()(norm)
     
     x = adaptive_conv(inputs, 32, kernel_size=3, strides=2)
-    x = adaptive_conv(inputs, 64, kernel_size=3, strides=2)
+    x = adaptive_conv(x, 64, kernel_size=3, strides=2)
     x = adaptive_conv(x, 128, kernel_size=3, strides=2)
     x = adaptive_conv(x, 256, kernel_size=3, strides=2)
     x = adaptive_conv(x, 512, kernel_size=3, strides=2)
@@ -72,11 +92,16 @@ def create_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0
     pos_encoding_layer = PositionalEncoding(max_position=1, d_model=model_features.shape[-1])
     x = pos_encoding_layer(x)
 
+    # Self-Modeling Component: Meta-Learning Mechanism for Adaptive Weights
+    meta_learner = MetaLearner()
+    adjusted_weights, _ = meta_learner(x, gradients=x)
+
     # Dynamic Self-Modeling Mechanism with Multi-Head Attention
-    self_modeling_dense = Dense(d_model, activation='relu')(x)
+    self_modeling_dense = Dense(d_model, activation='relu')(adjusted_weights)
     attention_output = MultiHeadAttention(num_heads=8, key_dim=d_model)(self_modeling_dense, self_modeling_dense)  # Increased number of heads
     self_modeling_output = Dense(model_features.shape[-1])(attention_output)
-    
+
+    # Final Flattening for classification
     x = Flatten()(x)
     
     # Final Classification Layers
@@ -98,6 +123,7 @@ def create_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0
     
     return model
 
+# Data Loading and Preprocessing
 def load_and_preprocess_data():
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
@@ -116,6 +142,7 @@ def load_and_preprocess_data():
 
     return (x_train, y_train), (x_val, y_val), (x_test, y_test)
 
+# Main Training Function
 def main():
     input_shape = (28, 28, 1)
     output_dim = 10
@@ -136,7 +163,7 @@ def main():
     )
     datagen.fit(x_train)
 
-    model = create_csm_model(input_shape, output_dim)
+    model = create_self_modeling_csm_model(input_shape, output_dim)
 
     # Callbacks
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
@@ -157,6 +184,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
 
 
