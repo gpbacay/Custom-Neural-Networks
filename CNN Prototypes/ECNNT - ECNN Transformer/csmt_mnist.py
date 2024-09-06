@@ -59,7 +59,7 @@ def create_csm_model(input_shape, output_dim, d_model=64, self_modeling_weight=0
         return tf.keras.layers.ReLU()(norm)
     
     x = adaptive_conv(inputs, 32, kernel_size=3, strides=2)
-    x = adaptive_conv(x, 64, kernel_size=3, strides=2)
+    x = adaptive_conv(inputs, 64, kernel_size=3, strides=2)
     x = adaptive_conv(x, 128, kernel_size=3, strides=2)
     x = adaptive_conv(x, 256, kernel_size=3, strides=2)
     x = adaptive_conv(x, 512, kernel_size=3, strides=2)
@@ -162,4 +162,4 @@ if __name__ == "__main__":
 
 # Convolutional Self-Modeling Transformer (CSMT)
 # python csmt_mnist.py
-# Test Accuracy: 0.9864
+# Test Accuracy: 0.9882
