@@ -191,4 +191,4 @@ if __name__ == "__main__":
 
 # Convolutional Self-Modeling Transformer (CSMT)
 # python csmt_mnist.py
-# Test Accuracy: 0.9882
+# Test Accuracy: 0.9856
