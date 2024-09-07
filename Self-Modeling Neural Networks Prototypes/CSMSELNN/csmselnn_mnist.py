@@ -109,7 +109,7 @@ def create_csmselnn_model(input_shape, initial_reservoir_size, spectral_radius, 
     x = MaxPooling2D((2, 2))(x)
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
     x = MaxPooling2D((2, 2))(x)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
+    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
     
     x = Flatten()(x)
     
@@ -128,7 +128,6 @@ def create_csmselnn_model(input_shape, initial_reservoir_size, spectral_radius, 
     selnn_output = rnn_layer(expanded_inputs)
     selnn_output = Flatten()(selnn_output)
     
-    # Build the rest of the model
     x = Dense(128, activation='relu', kernel_regularizer=l2(1e-4))(selnn_output)
     x = Dropout(0.5)(x)
     x = Dense(64, activation='relu', kernel_regularizer=l2(1e-4))(x)
