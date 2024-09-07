@@ -1,13 +1,15 @@
 import cv2
 import numpy as np
+import tensorflow as tf
 import matplotlib.pyplot as plt
-from tensorflow.keras.models import load_model
 from dstrctgsr_model import GatedSLNNStep
 
 # Load the trained model
 try:
     MODEL_FILEPATH = 'Trained Models/dstrctgsr_mnist.keras'
-    model = load_model(MODEL_FILEPATH, custom_objects={'GatedSLNNStep': GatedSLNNStep})
+    model = tf.keras.models.load_model(MODEL_FILEPATH, custom_objects={
+        'GatedSLNNStep': GatedSLNNStep
+    })
     print("Model loaded successfully.")
 except FileNotFoundError:
     print(f"Error: The {MODEL_FILEPATH} model file was not found.")
@@ -38,15 +40,22 @@ def predict(image_path):
         return None
     
     try:
-        prediction = model.predict(image)
-        predicted_digit = np.argmax(prediction)
-        return predicted_digit
+        predictions = model.predict(image)
+        # The first output is the classification result
+        classification_output = predictions[0]
+        predicted_digit = np.argmax(classification_output)
+        confidence = np.max(classification_output)
+        
+        print(f"Prediction shape: {[p.shape for p in predictions]}")
+        print(f"Prediction types: {[type(p) for p in predictions]}")
+        
+        return predicted_digit, confidence
     except Exception as e:
         print(f"An error occurred during prediction: {str(e)}")
         return None
 
-def display_image_and_prediction(image_path, predicted_digit):
-    # Display the image along with its predicted digit
+def display_image_and_prediction(image_path, predicted_digit, confidence):
+    # Display the image along with its predicted digit and confidence
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if image is None:
         print(f"Error: Image at path '{image_path}' could not be loaded.")
@@ -54,20 +63,21 @@ def display_image_and_prediction(image_path, predicted_digit):
     
     plt.figure(figsize=(6, 6))
     plt.imshow(image, cmap='gray')
-    plt.title(f'Predicted digit: {predicted_digit}')
+    plt.title(f'Predicted digit: {predicted_digit}\nConfidence: {confidence:.2f}')
     plt.axis('off')
     plt.show()
 
 if __name__ == "__main__":
     # Example usage
     test_image_path = 'Test/img_5.png'  # Replace with your image path
-    predicted_digit = predict(test_image_path)
-    if predicted_digit is not None:
+    result = predict(test_image_path)
+    if result is not None:
+        predicted_digit, confidence = result
         print(f'Predicted digit: {predicted_digit}')
-        display_image_and_prediction(test_image_path, predicted_digit)
-
-
-
+        print(f'Confidence: {confidence:.2f}')
+        display_image_and_prediction(test_image_path, predicted_digit, confidence)
+    else:
+        print("Prediction failed.")
 
 # DSTR-CT-GSR - Dynamic Spatio-Tempo-Relational Convolutional Transformer with Gated Spiking Reservoir
 # python dstrctgsr_deploy.py
