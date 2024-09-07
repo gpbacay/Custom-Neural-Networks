@@ -93,10 +93,14 @@ class SelfModelingCallback(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         current_metric = logs.get(self.performance_metric, 0)
+        # Adjust based on self-modeling output
+        self_modeling_output = logs.get('self_modeling_output_loss', float('inf'))
         if current_metric >= self.target_metric:
             print(f" - Performance metric {self.performance_metric} reached target {self.target_metric}. Checking for neuron addition or pruning.")
-            self.selnn_step_layer.add_neurons(1)  # Add 1 neuron
-            self.selnn_step_layer.prune_connections(self.prune_connections_threshold)
+            # Example: Adding neurons if self-modeling output loss is below a threshold
+            if self_modeling_output < self.add_neurons_threshold:
+                self.selnn_step_layer.add_neurons(1)  # Add 1 neuron
+                self.selnn_step_layer.prune_connections(self.prune_connections_threshold)
 
 # Function to Create the SELNN Model
 def create_selnn_model(input_dim, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
@@ -169,32 +173,13 @@ def main():
         output_dim=output_dim
     )
     
-    model.compile(
-        optimizer='adam',
-        loss={
-            "classification_output": "sparse_categorical_crossentropy",
-            "self_modeling_output": "mean_squared_error"
-        },
-        loss_weights={"classification_output": 1.0, "self_modeling_output": 0.5},
-        metrics={"classification_output": "accuracy"}
-    )
+    model.compile(optimizer='adam',
+                  loss={'classification_output': 'sparse_categorical_crossentropy', 'self_modeling_output': 'mean_squared_error'},
+                  metrics={'classification_output': 'accuracy'})
     
-    # Early stopping and learning rate scheduler
-    early_stopping_callback = EarlyStopping(
-        monitor='val_classification_output_accuracy',
-        patience=3,
-        restore_best_weights=True,
-        mode='max'
-    )
-    
-    reduce_lr = ReduceLROnPlateau(
-        monitor='val_classification_output_accuracy',
-        factor=0.1,
-        patience=2,
-        min_lr=1e-6,
-        mode='max'
-    )
-    
+    # Callbacks
+    early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=3, mode='max', restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=2, mode='max', verbose=1)
     self_modeling_callback = SelfModelingCallback(
         selnn_step_layer=selnn_step_layer,
         performance_metric='classification_output_accuracy',
@@ -205,19 +190,30 @@ def main():
     
     # Train the model
     history = model.fit(
-        x_train, {"classification_output": y_train, "self_modeling_output": x_train},
-        validation_data=(x_val, {"classification_output": y_val, "self_modeling_output": x_val}),
+        x_train, 
+        {'classification_output': y_train, 'self_modeling_output': x_train},
         epochs=epochs,
         batch_size=batch_size,
-        callbacks=[early_stopping_callback, reduce_lr, self_modeling_callback]
+        validation_data=(x_val, {'classification_output': y_val, 'self_modeling_output': x_val}),
+        callbacks=[early_stopping, reduce_lr, self_modeling_callback]
     )
     
     # Evaluate the model
-    test_results = model.evaluate(x_test, {"classification_output": y_test, "self_modeling_output": x_test})
-    print(f"Test results - Loss: {test_results[0]:.4f}, Accuracy: {test_results[1]:.4f}")
+    test_loss, test_accuracy = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test})
+    print(f"Test Accuracy: {test_accuracy:.4f}")
+
+    # Plot training history
+    plt.plot(history.history['classification_output_accuracy'])
+    plt.plot(history.history['val_classification_output_accuracy'])
+    plt.title('Model Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend(['Train', 'Validation'], loc='upper left')
+    plt.show()
 
 if __name__ == "__main__":
     main()
+
 
 
 
