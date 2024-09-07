@@ -81,6 +81,6 @@ if __name__ == "__main__":
         print("Prediction failed.")
 
 
-# Convolutional Self-Modeling Spiking Elastic Liquid Nueral Network (CSMSELNN)
+# Convolutional Self-Modeling Spiking Elastic Liquid Neural Network (CSMSELNN)
 # python csmselnn_deploy.py
 # Test Accuracy: 0.9920
