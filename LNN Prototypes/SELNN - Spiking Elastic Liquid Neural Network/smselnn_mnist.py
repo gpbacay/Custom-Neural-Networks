@@ -93,11 +93,9 @@ class SelfModelingCallback(Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         current_metric = logs.get(self.performance_metric, 0)
-        # Adjust based on self-modeling output
         self_modeling_output = logs.get('self_modeling_output_loss', float('inf'))
         if current_metric >= self.target_metric:
             print(f" - Performance metric {self.performance_metric} reached target {self.target_metric}. Checking for neuron addition or pruning.")
-            # Example: Adding neurons if self-modeling output loss is below a threshold
             if self_modeling_output < self.add_neurons_threshold:
                 self.selnn_step_layer.add_neurons(1)  # Add 1 neuron
                 self.selnn_step_layer.prune_connections(self.prune_connections_threshold)
@@ -179,10 +177,10 @@ def main():
     
     # Callbacks
     early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=3, mode='max', restore_best_weights=True)
-    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=2, mode='max', verbose=1)
+    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=2, mode='max')
     self_modeling_callback = SelfModelingCallback(
         selnn_step_layer=selnn_step_layer,
-        performance_metric='classification_output_accuracy',
+        performance_metric='val_classification_output_accuracy',
         target_metric=0.95,
         add_neurons_threshold=add_neurons_threshold,
         prune_connections_threshold=prune_connections_threshold
@@ -192,23 +190,22 @@ def main():
     history = model.fit(
         x_train, 
         {'classification_output': y_train, 'self_modeling_output': x_train},
+        validation_data=(x_val, {'classification_output': y_val, 'self_modeling_output': x_val}),
         epochs=epochs,
         batch_size=batch_size,
-        validation_data=(x_val, {'classification_output': y_val, 'self_modeling_output': x_val}),
         callbacks=[early_stopping, reduce_lr, self_modeling_callback]
     )
     
     # Evaluate the model
-    test_loss, test_accuracy = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test})
-    print(f"Test Accuracy: {test_accuracy:.4f}")
-
+    test_loss, test_acc = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test}, verbose=2)
+    print(f"Test accuracy: {test_acc:.4f}")
+    
     # Plot training history
-    plt.plot(history.history['classification_output_accuracy'])
-    plt.plot(history.history['val_classification_output_accuracy'])
-    plt.title('Model Accuracy')
+    plt.plot(history.history['classification_output_accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_classification_output_accuracy'], label='Validation Accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
-    plt.legend(['Train', 'Validation'], loc='upper left')
+    plt.legend()
     plt.show()
 
 if __name__ == "__main__":
@@ -217,8 +214,6 @@ if __name__ == "__main__":
 
 
 
-
-
 # Self-Modeling Spiking Elastic Liquid Nueral Network (SMSELNN)
 # python smselnn_mnist.py
-# Test Accuracy: 0.9658 (fast)
+# Test Accuracy: 0.9669
