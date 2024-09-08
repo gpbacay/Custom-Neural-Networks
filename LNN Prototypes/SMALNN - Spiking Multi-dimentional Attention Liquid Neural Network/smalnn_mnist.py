@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Lambda, Dropout, Flatten, LayerNormalization
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.regularizers import l2
 from sklearn.model_selection import train_test_split
 
 # Attention class to define layers outside the functions
@@ -86,9 +87,10 @@ def create_spiking_nlnn_model(input_dim, reservoir_dim, spectral_radius, leak_ra
 
     lnn_output = Lambda(apply_spiking_lnn, output_shape=(max_reservoir_dim,))(inputs)
 
-    x = Dense(128, activation='relu')(lnn_output)
+    # Apply L2 regularization
+    x = Dense(128, activation='relu', kernel_regularizer=l2(1e-4))(lnn_output)
     x = Dropout(0.5)(x)
-    x = Dense(64, activation='relu')(x)
+    x = Dense(64, activation='relu', kernel_regularizer=l2(1e-4))(x)
     x = Dropout(0.5)(x)
 
     outputs = Dense(output_dim, activation='softmax')(x)
@@ -140,6 +142,7 @@ if __name__ == "__main__":
 
 
 
+
 # Spiking Multi-dimentional Attention Liquid Nueral Network (SMALNN)
 # python smalnn_mnist.py
-# Test Accuracy: 0.9616
+# Test Accuracy: 0.9562
