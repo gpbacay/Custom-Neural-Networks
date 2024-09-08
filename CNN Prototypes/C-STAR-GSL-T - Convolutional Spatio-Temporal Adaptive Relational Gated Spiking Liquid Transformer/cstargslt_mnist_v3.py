@@ -1,11 +1,11 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Dropout, Flatten, Conv2D, GlobalAveragePooling2D, Reshape
-from tensorflow.keras.layers import MultiHeadAttention, Add, LayerNormalization
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
 
+# EfficientNet Block
 def efficientnet_block(inputs, filters, expansion_factor, stride, l2_reg=1e-4):
     expanded_filters = filters * expansion_factor
     x = Conv2D(expanded_filters, kernel_size=1, padding='same', use_bias=False, kernel_regularizer=l2(l2_reg))(inputs)
@@ -20,6 +20,7 @@ def efficientnet_block(inputs, filters, expansion_factor, stride, l2_reg=1e-4):
         x = tf.keras.layers.Add()([inputs, x])
     return x
 
+# Custom Gated Spiking Liquid Neural Network Step
 class GatedSLNNStep(tf.keras.layers.Layer):
     def __init__(self, reservoir_weights, input_weights, gate_weights, leak_rate, spike_threshold, max_reservoir_dim, **kwargs):
         super().__init__(**kwargs)
@@ -71,6 +72,7 @@ class GatedSLNNStep(tf.keras.layers.Layer):
         gate_weights = np.array(config.pop('gate_weights'))
         return cls(reservoir_weights, input_weights, gate_weights, **config)
 
+# Initialize Reservoir
 def initialize_reservoir(input_dim, reservoir_dim, spectral_radius):
     reservoir_weights = np.random.randn(reservoir_dim, reservoir_dim)
     reservoir_weights *= spectral_radius / np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
@@ -78,6 +80,7 @@ def initialize_reservoir(input_dim, reservoir_dim, spectral_radius):
     gate_weights = np.random.randn(3 * reservoir_dim, input_dim) * 0.1
     return reservoir_weights, input_weights, gate_weights
 
+# Positional Encoding Layer
 class PositionalEncoding(tf.keras.layers.Layer):
     def __init__(self, max_position, d_model):
         super(PositionalEncoding, self).__init__()
@@ -117,7 +120,47 @@ class PositionalEncoding(tf.keras.layers.Layer):
     def from_config(cls, config):
         return cls(config['max_position'], config['d_model'])
 
-def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, d_model=64, num_heads=4, l2_reg=1e-4):
+# Multi-Dimensional Attention Layer
+class MultiDimAttention(tf.keras.layers.Layer):
+    def __init__(self, **kwargs):
+        super(MultiDimAttention, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        self.channels = input_shape[-1]
+        self.temporal_dense = Dense(self.channels, activation='sigmoid')
+        self.channel_dense = Dense(self.channels, activation='sigmoid')
+        self.spatial_dense = Dense(1, activation='sigmoid')
+        super(MultiDimAttention, self).build(input_shape)
+
+    def temporal_attention(self, inputs):
+        avg_pool = tf.reduce_mean(inputs, axis=-1, keepdims=True)
+        max_pool = tf.reduce_max(inputs, axis=-1, keepdims=True)
+        concat = tf.concat([avg_pool, max_pool], axis=-1)
+        attention = self.temporal_dense(concat)
+        return inputs * attention
+
+    def channel_attention(self, inputs):
+        avg_pool = tf.reduce_mean(inputs, axis=1, keepdims=True)
+        max_pool = tf.reduce_max(inputs, axis=1, keepdims=True)
+        concat = tf.concat([avg_pool, max_pool], axis=-1)
+        attention = self.channel_dense(concat)
+        return inputs * attention
+
+    def spatial_attention(self, inputs):
+        avg_pool = tf.reduce_mean(inputs, axis=-1, keepdims=True)
+        max_pool = tf.reduce_max(inputs, axis=-1, keepdims=True)
+        concat = tf.concat([avg_pool, max_pool], axis=-1)
+        attention = self.spatial_dense(concat)
+        return inputs * attention
+
+    def call(self, inputs):
+        x = self.temporal_attention(inputs)
+        x = self.channel_attention(x)
+        x = self.spatial_attention(x)
+        return x
+
+# Create C-STAR-GSL-T Model
+def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, l2_reg=1e-4):
     inputs = Input(shape=input_shape)
 
     x = Conv2D(32, kernel_size=3, strides=2, padding='same', use_bias=False, kernel_regularizer=l2(l2_reg))(inputs)
@@ -133,32 +176,27 @@ def create_cstar_gsl_t_model(input_shape, reservoir_dim, spectral_radius, leak_r
     pos_encoding_layer = PositionalEncoding(max_position=1, d_model=x.shape[-1])
     x = pos_encoding_layer(x)
 
-    # Multi-Head Attention for Relational Reasoning
-    attention_output = MultiHeadAttention(num_heads=num_heads, key_dim=d_model)(x, x)
-    attention_output = Add()([x, attention_output])
-    attention_output = LayerNormalization()(attention_output)
+    # Multi-Dimensional Attention for Relational Reasoning
+    multi_dim_attention = MultiDimAttention()
+    x = multi_dim_attention(x)
 
-    # Gated Spiking Reservoir Processing
-    spatiotemporal_reservoir_weights, spatiotemporal_input_weights, spiking_gate_weights = initialize_reservoir(x.shape[-1], reservoir_dim, spectral_radius)
-    lnn_layer = tf.keras.layers.RNN(
-        GatedSLNNStep(spatiotemporal_reservoir_weights, spatiotemporal_input_weights, spiking_gate_weights, leak_rate, spike_threshold, max_reservoir_dim),
-        return_sequences=True
-    )
+    # Gated Spiking Liquid Neural Network Step
+    reservoir_weights, input_weights, gate_weights = initialize_reservoir(x.shape[-1], reservoir_dim, spectral_radius)
+    gsl_nn_step = GatedSLNNStep(reservoir_weights, input_weights, gate_weights, leak_rate, spike_threshold, max_reservoir_dim)
+    x = tf.keras.layers.RNN(gsl_nn_step)(x)
 
-    lnn_output = lnn_layer(attention_output)
-    lnn_output = Flatten()(lnn_output)
+    x = Dense(output_dim, activation='softmax')(x)
 
-    x = Dense(128, activation='relu', kernel_regularizer=l2(l2_reg))(lnn_output)
-    x = Dropout(0.5)(x)
-    outputs = Dense(output_dim, activation='softmax', kernel_regularizer=l2(l2_reg))(x)
+    model = tf.keras.Model(inputs=inputs, outputs=x)
+    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
-    model = tf.keras.Model(inputs, outputs)
     return model
 
 def preprocess_data(x):
     x = x.astype(np.float32) / 255.0
     return np.expand_dims(x, axis=-1)
 
+# Main Function
 def main():
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
@@ -199,14 +237,12 @@ def main():
     test_loss, test_acc = model.evaluate(x_test, y_test)
     print(f'Test accuracy: {test_acc:.4f}')
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
 
 
 
-
-# Convolutional Spatio-Temporal Adaptive Relational Gated Spiking Liquid Transformer (C-STAR-GSL-T) with Positional Encoding
-# python cstargslt_mnist_v2.py
-# Test Accuracy: 0.9933
-
-
+# Convolutional Spatio-Temporal Adaptive Relational Gated Spiking Liquid Transformer (C-STAR-GSL-T) 
+# with Positional Encoding and Multi-Dimensional Attention
+# python cstargslt_mnist_v3.py
+# Test Accuracy: 0.9920
