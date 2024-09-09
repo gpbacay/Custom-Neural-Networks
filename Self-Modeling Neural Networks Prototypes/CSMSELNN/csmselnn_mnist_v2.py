@@ -183,4 +183,4 @@ if __name__ == "__main__":
 
 # Convolutional Self-Modeling Spiking Elastic Liquid Neural Network (CSMSELNN) version 2
 # python csmselnn_mnist_v2.py
-# Test Accuracy: 0.9915
+# Test Accuracy: 0.9920
