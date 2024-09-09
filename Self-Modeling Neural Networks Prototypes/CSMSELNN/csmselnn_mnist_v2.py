@@ -81,7 +81,7 @@ class ExpandDimsLayer(Layer):
         return tf.expand_dims(inputs, axis=self.axis)
 
 class SynaptogenesisCallback(Callback):
-    def __init__(self, synaptogenesis_layer, performance_metric='classification_output_accuracy', target_metric=0.95, 
+    def __init__(self, synaptogenesis_layer, performance_metric='val_classification_output_accuracy', target_metric=0.95,
                  add_synapses_threshold=0.01, prune_synapses_threshold=0.1, growth_phase_length=10, pruning_phase_length=5):
         super().__init__()
         self.synaptogenesis_layer = synaptogenesis_layer
@@ -159,77 +159,79 @@ def create_csmselnn_model(input_shape, initial_reservoir_size, spectral_radius, 
     x = Dense(64, activation='relu', kernel_regularizer=l2(1e-4))(x)
     x = Dropout(0.5)(x)
     
-    predicted_hidden = Dense(np.prod(input_shape), name="self_modeling_output")(x)
+    # Classification Output
+    classification_output = Dense(output_dim, activation='softmax', name="classification_output")(x)
     
-    outputs = Dense(output_dim, activation='softmax', name="classification_output")(x)
+    # Self-modeling Output
+    self_modeling_output = Dense(np.prod(input_shape), name="self_modeling_output")(synaptogenesis_output)
     
-    model = tf.keras.Model(inputs, [outputs, predicted_hidden])
+    model = tf.keras.Model(inputs, [classification_output, self_modeling_output])
+    
     return model, synaptogenesis_layer
 
 def preprocess_data(x):
-    return x.astype(np.float32) / 255.0
+    return x / 255.0  # Normalize to [0, 1]
 
 def main():
+    # Load and preprocess data
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+    x_train, x_test = preprocess_data(x_train), preprocess_data(x_test)
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.2, random_state=42)
-
-    # Add channel dimension
-    x_train = np.expand_dims(preprocess_data(x_train), axis=-1)
-    x_val = np.expand_dims(preprocess_data(x_val), axis=-1)
-    x_test = np.expand_dims(preprocess_data(x_test), axis=-1)
-
-    input_shape = x_train.shape[1:]
-
-    initial_reservoir_size = 512
-    max_reservoir_dim = 4096
-    spectral_radius = 0.5
-    leak_rate = 0.1
-    spike_threshold = 0.5
-    output_dim = 10
-    epochs = 10
-    batch_size = 64
+    
+    # Expand dimensions to fit the model input
+    x_train = np.expand_dims(x_train, axis=-1)
+    x_val = np.expand_dims(x_val, axis=-1)
+    x_test = np.expand_dims(x_test, axis=-1)
     
     model, synaptogenesis_layer = create_csmselnn_model(
-        input_shape=input_shape,
-        initial_reservoir_size=initial_reservoir_size,
-        spectral_radius=spectral_radius,
-        leak_rate=leak_rate,
-        spike_threshold=spike_threshold,
-        max_reservoir_dim=max_reservoir_dim,
-        output_dim=output_dim
+        input_shape=x_train.shape[1:],
+        initial_reservoir_size=512,
+        max_reservoir_dim=4096,
+        spectral_radius=0.5,
+        leak_rate=0.1,
+        spike_threshold=0.5,
+        output_dim=10
     )
     
-    model.compile(optimizer='adam',
-                  loss={'classification_output': 'sparse_categorical_crossentropy', 'self_modeling_output': 'mean_squared_error'},
-                  metrics={'classification_output': 'accuracy'})
-    
-    early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=10, mode='max', restore_best_weights=True)
-    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=5, mode='max')
-    synaptogenesis_callback = SynaptogenesisCallback(
-        synaptogenesis_layer=synaptogenesis_layer,
-        performance_metric='val_classification_output_accuracy',
-        target_metric=0.90,
-        growth_phase_length=10,
-        pruning_phase_length=5
+    model.compile(
+        optimizer='adam',
+        loss={'classification_output': 'sparse_categorical_crossentropy', 'self_modeling_output': 'mse'},
+        metrics={'classification_output': 'accuracy'}
     )
+    
+    callbacks = [
+        SynaptogenesisCallback(
+            synaptogenesis_layer=synaptogenesis_layer,
+            performance_metric='val_classification_output_accuracy',
+            target_metric=0.95,
+            add_synapses_threshold=0.01,
+            prune_synapses_threshold=0.1
+        ),
+        EarlyStopping(monitor='val_classification_output_accuracy', mode='max', patience=5, restore_best_weights=True),
+        ReduceLROnPlateau(monitor='val_classification_output_accuracy', mode='max', factor=0.5, patience=3)
+    ]
     
     history = model.fit(
-        x_train, 
-        {'classification_output': y_train, 'self_modeling_output': x_train.reshape(x_train.shape[0], -1)},
-        validation_data=(x_val, {'classification_output': y_val, 'self_modeling_output': x_val.reshape(x_val.shape[0], -1)}),
-        epochs=epochs,
-        batch_size=batch_size,
-        callbacks=[early_stopping, reduce_lr, synaptogenesis_callback]
+        x_train,
+        {'classification_output': y_train, 'self_modeling_output': x_train.flatten().reshape(-1, np.prod(x_train.shape[1:]))},
+        validation_data=(x_val, {'classification_output': y_val, 'self_modeling_output': x_val.flatten().reshape(-1, np.prod(x_val.shape[1:]))}),
+        epochs=10,
+        batch_size=64,
+        callbacks=callbacks
     )
     
-    test_loss, test_acc = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test.reshape(x_test.shape[0], -1)}, verbose=2)
-    print(f"Test accuracy: {test_acc:.4f}")
+    # Evaluate model on test data
+    test_loss, test_accuracy = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test.flatten().reshape(-1, np.prod(x_test.shape[1:]))})
+    print(f"Test Accuracy: {test_accuracy:.4f}")
     
-    plt.plot(history.history['classification_output_accuracy'], label='Train Accuracy')
-    plt.plot(history.history['val_classification_output_accuracy'], label='Validation Accuracy')
+    # Plot training history
+    plt.plot(history.history['classification_output_accuracy'])
+    plt.plot(history.history['val_classification_output_accuracy'])
+    plt.title('Model accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
-    plt.legend()
+    plt.legend(['Train', 'Val'], loc='lower right')
+    plt.legend(['Train', 'Val'], loc='lower right')
     plt.show()
 
 if __name__ == "__main__":
@@ -237,6 +239,7 @@ if __name__ == "__main__":
 
 
 
+
 # Convolutional Self-Modeling Spiking Elastic Liquid Neural Network (CSMSELNN) version 2
 # python csmselnn_mnist_v2.py
-# Test Accuracy: 0.9924
+# Test Accuracy: 0.9919
