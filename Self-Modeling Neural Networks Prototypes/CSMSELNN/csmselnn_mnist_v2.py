@@ -221,7 +221,7 @@ def main():
     input_shape = x_train.shape[1:]
     model, synaptogenesis_layer = create_csmselnn_model(input_shape, initial_reservoir_size=100, spectral_radius=1.25, 
                                                         leak_rate=0.3, spike_threshold=0.5, max_reservoir_dim=500, output_dim=10)
-    history = train_model(model, synaptogenesis_layer, x_train, y_train, x_val, y_val, epochs=9)
+    history = train_model(model, synaptogenesis_layer, x_train, y_train, x_val, y_val, epochs=10)
 
     # Evaluate model
     test_loss, test_acc = model.evaluate(x_test, y_test, verbose=2)
