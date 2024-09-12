@@ -65,7 +65,7 @@ class SynaptogenesisLayer(tf.keras.layers.Layer):
 
         updated_reservoir_weights = tf.concat([
             tf.concat([self.reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1),
-            tf.concat([tf.zeros((new_neurons, current_size)), new_reservoir_weights[current_size:, current_size:]], axis=1)
+            tf.concat([tf.zeros((new_neurons, current_size)), new_reservoir_weights], axis=1)
         ], axis=0)
         
         spectral_radius = tf.math.real(tf.reduce_max(tf.abs(tf.linalg.eigvals(updated_reservoir_weights))))
@@ -84,6 +84,7 @@ class SynaptogenesisLayer(tf.keras.layers.Layer):
         mask = activity > threshold
         self.reservoir_weights.assign(tf.where(tf.tile(mask[None, :], [self.reservoir_weights.shape[0], 1]), self.reservoir_weights, tf.zeros_like(self.reservoir_weights)))
 
+
 class TemporalAttentionLayer(Layer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -93,6 +94,7 @@ class TemporalAttentionLayer(Layer):
         weights = tf.reduce_mean(inputs, axis=1, keepdims=True)
         return tf.reduce_sum(inputs * weights, axis=1)
 
+
 class ExpandDimsLayer(Layer):
     def __init__(self, axis, **kwargs):
         super().__init__(**kwargs)
@@ -100,6 +102,15 @@ class ExpandDimsLayer(Layer):
 
     def call(self, inputs):
         return tf.expand_dims(inputs, axis=self.axis)
+
+
+class SelfModelingLayer(Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs):
+        return inputs  # For simplicity, this is a placeholder for the self-modeling mechanism
+
 
 class SynaptogenesisCallback(Callback):
     def __init__(self, synaptogenesis_layer, performance_metric='val_accuracy', target_metric=0.95,
@@ -168,7 +179,9 @@ def create_csmselnn_model(input_shape, initial_reservoir_size, spectral_radius, 
     rnn_layer = RNN(synaptogenesis_layer, return_sequences=True)
     temporal_attention = TemporalAttentionLayer()(rnn_layer(expanded_inputs))
 
-    x = Dense(output_dim, activation='softmax')(temporal_attention)
+    # Adding Self-Modeling Layer
+    self_modeling = SelfModelingLayer()(temporal_attention)
+    x = Dense(output_dim, activation='softmax')(self_modeling)
 
     model = tf.keras.Model(inputs=inputs, outputs=x)
     return model, synaptogenesis_layer
@@ -208,11 +221,11 @@ def main():
     input_shape = x_train.shape[1:]
     model, synaptogenesis_layer = create_csmselnn_model(input_shape, initial_reservoir_size=100, spectral_radius=1.25, 
                                                         leak_rate=0.3, spike_threshold=0.5, max_reservoir_dim=500, output_dim=10)
-    history = train_model(model, synaptogenesis_layer, x_train, y_train, x_val, y_val, epochs=10)
+    history = train_model(model, synaptogenesis_layer, x_train, y_train, x_val, y_val, epochs=9)
 
     # Evaluate model
     test_loss, test_acc = model.evaluate(x_test, y_test, verbose=2)
-    print(f'\nTest accuracy: {test_acc:.4f}')
+    print(f'Test accuracy: {test_acc:.4f}')
 
     # Plot training history
     plt.figure(figsize=(12, 4))
@@ -240,6 +253,7 @@ if __name__ == '__main__':
 
 
 
+
 # Convolutional Self-Modeling Spiking Elastic Liquid Neural Network (CSMSELNN) version 2
 # python csmselnn_mnist_v2.py
-# Test Accuracy: 0.9934
+# Test Accuracy: 0.9925
