@@ -225,5 +225,6 @@ if __name__ == "__main__":
 
 
 # Self-Modeling Gated Spiking Liquid Neural Network (SM-GSLNN)
+# without adding neurons/pruning connections mechanisms
 # python smgslnn_mnist.py
 # Test Accuracy: 0.9610
