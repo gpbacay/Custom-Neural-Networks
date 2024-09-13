@@ -289,4 +289,4 @@ if __name__ == '__main__':
 
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T)
 # python smcsert_mnist.py
-# Test Accuracy: 98.74%
+# Test Accuracy: 98.59%
