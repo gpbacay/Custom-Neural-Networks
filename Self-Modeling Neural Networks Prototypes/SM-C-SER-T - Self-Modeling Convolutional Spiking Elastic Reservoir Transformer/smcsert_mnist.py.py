@@ -287,6 +287,6 @@ if __name__ == '__main__':
 
 
 
-# Convolutional Self-Modeling Spiking Elastic Liquid Neural Network (CSMSELNN) version 2
-# python csmselnn_mnist_v2.py
+# Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T)
+# python smcsert_mnist.py
 # Test Accuracy: 98.74%
