@@ -157,7 +157,7 @@ def create_csmselnn_model(input_shape, initial_reservoir_size, spectral_radius, 
     )
     
     expanded_inputs = ExpandDimsLayer(axis=1)(x)
-    rnn_layer = tf.keras.layers.RNN(selnn_step_layer, return_sequences=False)
+    rnn_layer = tf.keras.layers.RNN(selnn_step_layer, return_sequences=True)
     selnn_output = rnn_layer(expanded_inputs)
     selnn_output = Flatten()(selnn_output)
     

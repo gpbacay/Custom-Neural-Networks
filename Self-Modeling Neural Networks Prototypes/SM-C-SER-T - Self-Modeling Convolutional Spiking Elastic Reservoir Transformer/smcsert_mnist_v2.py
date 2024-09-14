@@ -174,7 +174,6 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
         modulated_output = self.output_dense(modulated_internal)
         return modulated_output
 
-
 def create_reservoir_cnn_rnn_model(input_shape, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, l2_reg=1e-4):
     inputs = Input(shape=input_shape)
 
