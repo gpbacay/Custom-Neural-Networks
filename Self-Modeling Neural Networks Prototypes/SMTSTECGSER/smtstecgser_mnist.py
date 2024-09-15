@@ -312,7 +312,7 @@ def efficientnet_block(inputs, filters, expansion_factor, stride, l2_reg=1e-4):
         x = Add()([inputs, x])
     return x
 
-def create_reservoir_cnn_rnn_model(input_shape, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, l2_reg=1e-4):
+def create_smtstecgser_model(input_shape, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, l2_reg=1e-4):
     inputs = Input(shape=input_shape)
 
     # Convolutional layers process the 2D image
@@ -399,7 +399,7 @@ def main():
     epochs = 10
     batch_size = 64
 
-    model, reservoir_layer = create_reservoir_cnn_rnn_model(
+    model, reservoir_layer = create_smtstecgser_model(
         input_shape=input_shape,
         initial_reservoir_size=initial_reservoir_size,
         spectral_radius=spectral_radius,
@@ -448,7 +448,6 @@ if __name__ == '__main__':
 
 
 
-# Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 3
-# with Enhanced Self-Modeling Mechanism
-# python smcsert_mnist_v3.py
+# Self-Modeling Transformer-based Spatio-Temporal Efficient Convolutional Gated Spiking Elastic Reservoir (SMTSTECGSER)
+# python smtstecgser_mnist.py
 # Test Accuracy: 0.9935
