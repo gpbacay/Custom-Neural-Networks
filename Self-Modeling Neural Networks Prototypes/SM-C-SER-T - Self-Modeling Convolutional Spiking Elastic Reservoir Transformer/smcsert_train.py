@@ -1,5 +1,3 @@
-# train_eval.py
-
 import numpy as np
 import tensorflow as tf
 from smcsert_model import create_reservoir_cnn_rnn_model
