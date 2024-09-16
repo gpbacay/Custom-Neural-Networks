@@ -22,7 +22,7 @@ def efficientnet_block(inputs, filters, expansion_factor, stride, l2_reg=1e-4):
 
 
 class ReservoirComputingLayer(tf.keras.layers.Layer):
-    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, **kwargs):
+    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, synaptogenesis_rate=0.01, prune_threshold=0.05, **kwargs):
         super().__init__(**kwargs)
         self.initial_reservoir_size = initial_reservoir_size
         self.input_dim = input_dim
@@ -30,9 +30,10 @@ class ReservoirComputingLayer(tf.keras.layers.Layer):
         self.leak_rate = leak_rate
         self.spike_threshold = spike_threshold
         self.max_reservoir_dim = max_reservoir_dim
+        self.synaptogenesis_rate = synaptogenesis_rate
+        self.prune_threshold = prune_threshold
         self.reservoir_weights = None
         self.input_weights = None
-        self.refractory_period = 5
         self.state_size = max_reservoir_dim
         self.output_size = max_reservoir_dim
         self.current_size = initial_reservoir_size
@@ -42,6 +43,7 @@ class ReservoirComputingLayer(tf.keras.layers.Layer):
         super().build(input_shape)
 
     def _initialize_weights(self):
+        # Initializing weights as in the previous version
         reservoir_weights = np.random.randn(self.initial_reservoir_size, self.initial_reservoir_size) * 0.1
         reservoir_weights = np.dot(reservoir_weights, reservoir_weights.T)
         spectral_radius = np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
@@ -50,7 +52,6 @@ class ReservoirComputingLayer(tf.keras.layers.Layer):
             name='reservoir_weights',
             shape=(self.max_reservoir_dim, self.max_reservoir_dim),
             initializer=tf.constant_initializer(np.pad(reservoir_weights, ((0, self.max_reservoir_dim - self.initial_reservoir_size), (0, self.max_reservoir_dim - self.initial_reservoir_size)))),
-
             trainable=False
         )
 
@@ -69,11 +70,34 @@ class ReservoirComputingLayer(tf.keras.layers.Layer):
 
         state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_contribution + reservoir_contribution)
 
+        # Spiking dynamics
         spikes = tf.cast(tf.greater(state, self.spike_threshold), dtype=tf.float32)
         state = tf.where(spikes > 0, state - self.spike_threshold, state)
         padded_state = tf.pad(state, [[0, 0], [0, self.max_reservoir_dim - tf.shape(state)[1]]])
 
+        # Synaptogenesis: grow new synapses based on activity
+        self._apply_synaptogenesis(state)
+
         return padded_state, [padded_state]
+
+    def _apply_synaptogenesis(self, state):
+        active_neurons = tf.reduce_sum(tf.cast(state > self.spike_threshold, dtype=tf.float32), axis=0)[:self.current_size]  # Active neurons across the batch, only for current active size
+        grow_synapses = tf.random.uniform(active_neurons.shape) < self.synaptogenesis_rate  # Probabilistic growth
+        weak_synapses = tf.abs(self.reservoir_weights[:self.current_size, :self.current_size]) < self.prune_threshold  # Identify weak synapses in the active region
+
+        # Grow new synapses for active neurons in the active region
+        new_synapses = tf.cast(grow_synapses, dtype=tf.float32) * tf.random.normal(self.reservoir_weights[:self.current_size, :self.current_size].shape)
+        self.reservoir_weights.assign(tf.pad(
+            self.reservoir_weights[:self.current_size, :self.current_size] + new_synapses,
+            [[0, self.max_reservoir_dim - self.current_size], [0, self.max_reservoir_dim - self.current_size]]
+        ))
+
+        # Prune weak synapses in the active region
+        pruned_weights = tf.where(weak_synapses, tf.zeros_like(self.reservoir_weights[:self.current_size, :self.current_size]), self.reservoir_weights[:self.current_size, :self.current_size])
+        self.reservoir_weights.assign(tf.pad(
+            pruned_weights,
+            [[0, self.max_reservoir_dim - self.current_size], [0, self.max_reservoir_dim - self.current_size]]
+        ))
 
     def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
         return [tf.zeros((batch_size, self.max_reservoir_dim), dtype=tf.float32)]
@@ -149,12 +173,17 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
         self.internal_units = internal_units
         self.initial_feedback_strength = initial_feedback_strength
         
-        # Define layers for internal state and gate computation
         self.state_dense = Dense(internal_units, activation='relu')
         self.gate_dense = Dense(internal_units, activation='sigmoid')
         self.output_dense = Dense(output_dense)
 
-        # Learnable parameter for feedback strength, initialized with the initial value
+        # Recurrent feedback layer
+        self.recurrent_feedback = tf.keras.layers.SimpleRNN(
+            internal_units, 
+            return_sequences=True, 
+            return_state=True
+        )
+
         self.feedback_strength = self.add_weight(
             shape=(),
             initializer=tf.constant_initializer(initial_feedback_strength),
@@ -163,7 +192,6 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
         )
 
     def build(self, input_shape):
-        # Define feedback weights for internal modulation
         self.feedback_weights = self.add_weight(
             shape=(self.internal_units, self.internal_units),
             initializer='random_normal',
@@ -171,7 +199,6 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
             name='feedback_weights'
         )
 
-        # Bias term for feedback contribution
         self.bias = self.add_weight(
             shape=(self.internal_units,),
             initializer='zeros',
@@ -180,26 +207,28 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
         )
 
     def call(self, inputs, training=None):
-        # Calculate internal state and gate values based on inputs
         internal_state = self.state_dense(inputs)
         gate = self.gate_dense(inputs)
 
-        # Compute feedback using internal state and feedback weights
-        feedback = tf.matmul(internal_state, self.feedback_weights) + self.bias
+        # Reshape to add time dimension for RNN
+        internal_state_reshaped = tf.expand_dims(internal_state, axis=1)
 
-        # Modulate internal state with adaptive feedback strength
+        # Recurrent feedback mechanism
+        recurrent_output, recurrent_state = self.recurrent_feedback(internal_state_reshaped)
+
+        # Reshape back to 2D (batch_size, internal_units)
+        feedback = tf.matmul(recurrent_state, self.feedback_weights) + self.bias
+
+        # Modulate internal state with adaptive feedback
         modulated_internal = internal_state + self.feedback_strength * gate * feedback
-
-        # Apply dense layer for the final output
         modulated_output = self.output_dense(modulated_internal)
 
-        # Optional: If training, we can further modulate feedback based on a loss/error function
         if training:
-            # For example, feedback strength could adapt based on the magnitude of the internal state
             error_factor = tf.reduce_mean(tf.abs(internal_state))
-            self.feedback_strength.assign(tf.clip_by_value(self.feedback_strength * (1 + 0.01 * error_factor), 0.0, 1.0))  # Dynamically adjust feedback strength
+            self.feedback_strength.assign(tf.clip_by_value(self.feedback_strength * (1 + 0.01 * error_factor), 0.0, 1.0))
 
         return modulated_output
+
 
 def create_reservoir_cnn_rnn_model(input_shape, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim, l2_reg=1e-4):
     inputs = Input(shape=input_shape)
@@ -283,4 +312,4 @@ if __name__ == "__main__":
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 3
 # with Positional Encoding and Multi-Dimensional Attention
 # python smcsert_mnist_v3.py
-# Test Accuracy: 0.9850 (not yet deployed)
+# Test Accuracy: 0.9840 (not yet deployed)
