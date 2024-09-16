@@ -6,15 +6,16 @@ def load_mnist_data():
     # Load MNIST data
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
     x_train, x_test = x_train / 255.0, x_test / 255.0
-    x_train = np.expand_dims(x_train, axis=-1)  # Shape (28, 28, 1)
+    x_train = np.expand_dims(x_train, axis=-1)
     x_test = np.expand_dims(x_test, axis=-1)
+    
     # Convert labels to categorical
     y_train = tf.keras.utils.to_categorical(y_train, 10)
     y_test = tf.keras.utils.to_categorical(y_test, 10)
     return (x_train, y_train), (x_test, y_test)
 
 def train_model():
-    input_shape = (28, 28, 1)  # MNIST shape
+    input_shape = (28, 28, 1)
     num_classes = 10
     initial_reservoir_size = 100
     spectral_radius = 1.25

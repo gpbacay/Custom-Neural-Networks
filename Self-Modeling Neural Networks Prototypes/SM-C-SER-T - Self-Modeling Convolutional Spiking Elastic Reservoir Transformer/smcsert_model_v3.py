@@ -104,8 +104,8 @@ class ReservoirComputingLayer(tf.keras.layers.Layer):
 
 
 class PositionalEncoding(tf.keras.layers.Layer):
-    def __init__(self, max_position, d_model):
-        super(PositionalEncoding, self).__init__()
+    def __init__(self, max_position, d_model,**kwargs):
+        super(PositionalEncoding, self).__init__(**kwargs)
         self.pos_encoding = self.positional_encoding(max_position, d_model)
 
     def get_angles(self, pos, i, d_model):

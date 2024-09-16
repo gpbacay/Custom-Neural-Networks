@@ -3,7 +3,7 @@ import tensorflow as tf
 from smcsert_model_v3 import create_reservoir_cnn_rnn_model
 
 def train_and_evaluate():
-    input_shape = (28, 28, 1)  # Example shape for MNIST
+    input_shape = (28, 28, 1) 
     num_classes = 10
     initial_reservoir_size = 100
     spectral_radius = 1.25
@@ -42,7 +42,7 @@ def train_and_evaluate():
     print(f"Test Accuracy: {test_acc:.4f}")
 
     # Save the trained model
-    model.save('reservoir_cnn_rnn_model.h5')
+    model.save('Trained Models/smcsert_mnist_v3.keras')
 
 if __name__ == "__main__":
     train_and_evaluate()
@@ -51,4 +51,4 @@ if __name__ == "__main__":
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 3
 # with Positional Encoding and Multi-Dimensional Attention
 # python smcsert_train_v3.py
-# Test Accuracy: 
+# Test Accuracy: 0.9833

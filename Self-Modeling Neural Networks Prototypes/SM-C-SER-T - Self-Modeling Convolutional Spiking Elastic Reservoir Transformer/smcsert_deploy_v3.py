@@ -79,4 +79,4 @@ if __name__ == "__main__":
 
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 3
 # python smcsert_deploy_v3.py
-# Remarks: 
+# Remarks: 0.9833
