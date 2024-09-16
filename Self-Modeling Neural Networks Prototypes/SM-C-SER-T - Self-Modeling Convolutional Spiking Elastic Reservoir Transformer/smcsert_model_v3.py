@@ -172,7 +172,7 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
         super().__init__(**kwargs)
         self.internal_units = internal_units
         self.initial_feedback_strength = initial_feedback_strength
-        
+
         self.state_dense = Dense(internal_units, activation='relu')
         self.gate_dense = Dense(internal_units, activation='sigmoid')
         self.output_dense = Dense(output_dense)
@@ -216,11 +216,14 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
         # Recurrent feedback mechanism
         recurrent_output, recurrent_state = self.recurrent_feedback(internal_state_reshaped)
 
+        # Utilize recurrent_output for modulation
+        recurrent_feedback_modulation = tf.reduce_mean(recurrent_output, axis=1)
+
         # Reshape back to 2D (batch_size, internal_units)
         feedback = tf.matmul(recurrent_state, self.feedback_weights) + self.bias
 
         # Modulate internal state with adaptive feedback
-        modulated_internal = internal_state + self.feedback_strength * gate * feedback
+        modulated_internal = internal_state + self.feedback_strength * gate * (feedback + recurrent_feedback_modulation)
         modulated_output = self.output_dense(modulated_internal)
 
         if training:
