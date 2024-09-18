@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+from smcsert_mnist_v3 import ReservoirComputingLayer, PositionalEncoding, MultiDimAttention, FeedbackModulationLayer, ExpandDimsLayer
 
 # Load the trained model
 try:
@@ -24,7 +25,7 @@ def preprocess_image(image_path):
             return None
         image = cv2.resize(image, (28, 28))
         image = image.astype('float32') / 255.0
-        image = np.expand_dims(image, axis=[0, -1])  # Shape to (1, 28, 28, 1)
+        image = np.expand_dims(image, axis=[0, -1])
         return image
     except Exception as e:
         print(f"An error occurred during image preprocessing: {str(e)}")
@@ -79,4 +80,4 @@ if __name__ == "__main__":
 
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 3
 # python smcsert_deploy_v3.py
-# Remarks: 0.9833
+# Remarks: 0.9811 (FAILED)

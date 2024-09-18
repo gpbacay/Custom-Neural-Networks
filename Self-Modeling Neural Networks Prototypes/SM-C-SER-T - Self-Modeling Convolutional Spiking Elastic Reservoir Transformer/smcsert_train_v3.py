@@ -51,4 +51,4 @@ if __name__ == "__main__":
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 3
 # with Positional Encoding and Multi-Dimensional Attention
 # python smcsert_train_v3.py
-# Test Accuracy: 0.9833
+# Test Accuracy: 0.9811
