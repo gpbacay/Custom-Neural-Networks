@@ -1,54 +1,80 @@
 import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
 import tensorflow as tf
-from smcsert_model_v3 import create_reservoir_cnn_rnn_model
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from smcsert_model_v3 import create_smcsert_model, SelfModelingCallback
 
-def train_and_evaluate():
-    input_shape = (28, 28, 1) 
-    num_classes = 10
-    initial_reservoir_size = 100
-    spectral_radius = 1.25
+def preprocess_data(x):
+    return x.astype(np.float32) / 255.0
+
+def main():
+    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+    x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
+    x_train = preprocess_data(x_train).reshape(-1, 28, 28, 1)
+    x_val = preprocess_data(x_val).reshape(-1, 28, 28, 1)
+    x_test = preprocess_data(x_test).reshape(-1, 28, 28, 1)
+    
+    input_shape = (28, 28, 1)
+    initial_reservoir_size = 512
+    max_reservoir_dim = 4096
+    spectral_radius = 0.5
     leak_rate = 0.1
     spike_threshold = 0.5
-    max_reservoir_dim = 500
-    l2_reg = 1e-4
-
-    # Create model
-    model = create_reservoir_cnn_rnn_model(
+    output_dim = 10
+    epochs = 10
+    batch_size = 64
+    add_neurons_threshold = 0.1
+    prune_connections_threshold = 0.1
+    
+    model, reservoir_layer = create_smcsert_model(
         input_shape=input_shape,
         initial_reservoir_size=initial_reservoir_size,
         spectral_radius=spectral_radius,
         leak_rate=leak_rate,
         spike_threshold=spike_threshold,
         max_reservoir_dim=max_reservoir_dim,
-        output_dim=num_classes,
-        l2_reg=l2_reg
+        output_dim=output_dim
     )
-
-    # Load dataset (MNIST as an example)
-    (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
-    x_train, x_test = x_train / 255.0, x_test / 255.0
-    x_train = np.expand_dims(x_train, axis=-1)
-    x_test = np.expand_dims(x_test, axis=-1)
-
-    # Convert labels to categorical
-    y_train = tf.keras.utils.to_categorical(y_train, num_classes)
-    y_test = tf.keras.utils.to_categorical(y_test, num_classes)
-
-    # Train model
-    model.fit(x_train, y_train, batch_size=32, epochs=10, validation_data=(x_test, y_test))
-
-    # Evaluate model
-    test_loss, test_acc = model.evaluate(x_test, y_test)
-    print(f"Test Accuracy: {test_acc:.4f}")
-
-    # Save the trained model
-    model.save('Trained Models/smcsert_mnist_v3.keras')
+    
+    model.compile(optimizer='adam',
+                  loss={'classification_output': 'sparse_categorical_crossentropy', 'self_modeling_output': 'mean_squared_error'},
+                  metrics={'classification_output': 'accuracy'})
+    
+    early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=10, mode='max', restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=5, mode='max')
+    self_modeling_callback = SelfModelingCallback(
+        reservoir_layer=reservoir_layer,
+        performance_metric='val_classification_output_accuracy',
+        target_metric=0.90,
+        add_neurons_threshold=add_neurons_threshold,
+        prune_connections_threshold=prune_connections_threshold
+    )
+    
+    history = model.fit(
+        x_train, 
+        {'classification_output': y_train, 'self_modeling_output': x_train.reshape(x_train.shape[0], -1)},
+        validation_data=(x_val, {'classification_output': y_val, 'self_modeling_output': x_val.reshape(x_val.shape[0], -1)}),
+        epochs=epochs,
+        batch_size=batch_size,
+        callbacks=[early_stopping, reduce_lr, self_modeling_callback]
+    )
+    
+    test_loss, test_acc = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test.reshape(x_test.shape[0], -1)}, verbose=2)
+    print(f"Test accuracy: {test_acc:.4f}")
+    
+    plt.plot(history.history['classification_output_accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_classification_output_accuracy'], label='Validation Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.show()
 
 if __name__ == "__main__":
-    train_and_evaluate()
+    main()
 
 
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 3
 # with Positional Encoding and Multi-Dimensional Attention
 # python smcsert_train_v3.py
-# Test Accuracy: 0.9811
+# Test Accuracy: 

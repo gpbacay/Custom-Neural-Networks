@@ -217,11 +217,13 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
         super().__init__(**kwargs)
         self.internal_units = internal_units
         self.feedback_strength = feedback_strength
+        self.output_dense_units = output_dense
         self.state_dense = tf.keras.layers.Dense(internal_units, activation='relu')
         self.gate_dense = tf.keras.layers.Dense(internal_units, activation='sigmoid')
         self.output_dense = tf.keras.layers.Dense(output_dense)
 
     def build(self, input_shape):
+        super().build(input_shape)
         self.feedback_weights = self.add_weight(
             shape=(self.internal_units, self.internal_units),
             initializer='random_normal',
@@ -234,6 +236,10 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
             trainable=True,
             name='bias'
         )
+        # Build internal layers
+        self.state_dense.build(input_shape)
+        self.gate_dense.build(input_shape)
+        self.output_dense.build((input_shape[0], self.internal_units))
 
     def call(self, inputs):
         internal_state = self.state_dense(inputs)
@@ -248,17 +254,19 @@ class FeedbackModulationLayer(tf.keras.layers.Layer):
         config.update({
             "internal_units": self.internal_units,
             "feedback_strength": self.feedback_strength,
-            "state_dense": self.state_dense,
-            "gate_dense": self.gate_dense,
-            "output_dense": self.output_dense
+            "output_dense_units": self.output_dense_units
         })
         return config
 
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
 class SelfModelingCallback(Callback):
-    def __init__(self, selnn_step_layer, performance_metric='classification_output_accuracy', target_metric=0.95, 
+    def __init__(self, reservoir_layer, performance_metric='classification_output_accuracy', target_metric=0.95, 
                  add_neurons_threshold=0.01, prune_connections_threshold=0.1, growth_phase_length=10, pruning_phase_length=5, **kwargs):
         super().__init__(**kwargs)
-        self.selnn_step_layer = selnn_step_layer
+        self.reservoir_layer = reservoir_layer
         self.performance_metric = performance_metric
         self.target_metric = target_metric
         self.initial_add_neurons_threshold = add_neurons_threshold
@@ -291,17 +299,17 @@ class SelfModelingCallback(Callback):
             improvement_rate = (current_metric - self.performance_history[-5]) / 5
             
             if improvement_rate > 0.01:  # Fast improvement
-                self.selnn_step_layer.add_neurons()  # Add more neurons
+                self.reservoir_layer.add_neurons()  # Add more neurons
             elif improvement_rate < 0.001:  # Slow improvement
-                self.selnn_step_layer.prune_connections()  # More aggressive pruning
+                self.reservoir_layer.prune_connections()  # More aggressive pruning
 
         if current_metric >= self.target_metric:
             print(f" - Performance metric {self.performance_metric} reached target {self.target_metric}. Current phase: {self.current_phase}")
             if self.current_phase == 'growth':
                 if self_modeling_output < self.add_neurons_threshold:
-                    self.selnn_step_layer.add_neurons()
+                    self.reservoir_layer.add_neurons()
             elif self.current_phase == 'pruning':
-                self.selnn_step_layer.prune_connections()
+                self.reservoir_layer.prune_connections()
 
 class ExpandDimsLayer(tf.keras.layers.Layer):
     def __init__(self, axis, **kwargs):
@@ -353,13 +361,12 @@ def create_smcsert_model(input_shape, initial_reservoir_size, spectral_radius, l
     x = Dense(64, activation='relu', kernel_regularizer=l2(l2_reg))(x)
     x = Dropout(0.5)(x)
 
-    x = FeedbackModulationLayer()(x)
+    x = FeedbackModulationLayer(internal_units=64, output_dense=np.prod(input_shape))(x)
 
     predicted_hidden = Dense(np.prod(input_shape), name="self_modeling_output")(x)
     outputs = Dense(output_dim, activation='softmax', name="classification_output")(x)
 
     model = Model(inputs, [outputs, predicted_hidden])
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     return model, reservoir_layer
 
 def preprocess_data(x):
@@ -384,7 +391,7 @@ def main():
     add_neurons_threshold = 0.1
     prune_connections_threshold = 0.1
     
-    model, selnn_step_layer = create_smcsert_model(
+    model, reservoir_layer = create_smcsert_model(
         input_shape=input_shape,
         initial_reservoir_size=initial_reservoir_size,
         spectral_radius=spectral_radius,
@@ -401,7 +408,7 @@ def main():
     early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=10, mode='max', restore_best_weights=True)
     reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=5, mode='max')
     self_modeling_callback = SelfModelingCallback(
-        selnn_step_layer=selnn_step_layer,
+        reservoir_layer=reservoir_layer,
         performance_metric='val_classification_output_accuracy',
         target_metric=0.90,
         add_neurons_threshold=add_neurons_threshold,
@@ -433,4 +440,4 @@ if __name__ == "__main__":
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 3
 # with Positional Encoding and Multi-Dimensional Attention
 # python smcsert_mnist_v3.py
-# Test Accuracy: 0.9855
+# Test Accuracy: 0.9758
