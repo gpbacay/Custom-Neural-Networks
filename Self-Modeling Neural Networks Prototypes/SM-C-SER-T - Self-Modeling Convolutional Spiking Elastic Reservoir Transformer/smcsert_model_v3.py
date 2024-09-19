@@ -211,14 +211,14 @@ class MultiDimAttention(tf.keras.layers.Layer):
         return config
 
 class FeedbackModulationLayer(tf.keras.layers.Layer):
-    def __init__(self, internal_units=128, feedback_strength=0.1, output_dense=4096, **kwargs):
+    def __init__(self, internal_units=128, feedback_strength=0.1, output_dense_units=4096, **kwargs):
         super().__init__(**kwargs)
         self.internal_units = internal_units
         self.feedback_strength = feedback_strength
-        self.output_dense_units = output_dense
+        self.output_dense_units = output_dense_units
         self.state_dense = tf.keras.layers.Dense(internal_units, activation='relu')
         self.gate_dense = tf.keras.layers.Dense(internal_units, activation='sigmoid')
-        self.output_dense = tf.keras.layers.Dense(output_dense)
+        self.output_dense = tf.keras.layers.Dense(output_dense_units)
 
     def build(self, input_shape):
         super().build(input_shape)
