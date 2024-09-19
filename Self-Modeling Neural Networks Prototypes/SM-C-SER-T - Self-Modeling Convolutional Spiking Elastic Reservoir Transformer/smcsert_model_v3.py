@@ -33,88 +33,63 @@ class ReservoirComputingLayer(tf.keras.layers.Layer):
         self.pruning_rate = pruning_rate
         self.refractory_period = refractory_period
         self.epoch_counter = 0
-        self.current_size = initial_reservoir_size
-        self.state_size = max_reservoir_dim
+        
         self.reservoir_weights = None
         self.input_weights = None
         self.initialize_weights()
 
     def initialize_weights(self):
-        # Initialize reservoir weights
-        reservoir_weights = np.random.randn(self.initial_reservoir_size, self.initial_reservoir_size) * 0.1
-        reservoir_weights = np.dot(reservoir_weights, reservoir_weights.T)  # Ensure symmetric matrix
-        spectral_radius = np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
-        reservoir_weights *= self.spectral_radius / spectral_radius
-        self.reservoir_weights = tf.Variable(
-            np.pad(reservoir_weights, ((0, self.max_reservoir_dim - self.initial_reservoir_size), 
-                                       (0, self.max_reservoir_dim - self.initial_reservoir_size))),
-            dtype=tf.float32, trainable=False)
-
-        # Initialize input weights
+        reservoir_weights = np.random.randn(self.initial_reservoir_size, self.initial_reservoir_size)
+        reservoir_weights *= self.spectral_radius / np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
+        self.reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32, trainable=False)
+        
         input_weights = np.random.randn(self.initial_reservoir_size, self.input_dim) * 0.1
-        self.input_weights = tf.Variable(
-            np.pad(input_weights, ((0, self.max_reservoir_dim - self.initial_reservoir_size), (0, 0))),
-            dtype=tf.float32, trainable=False)
+        self.input_weights = tf.Variable(input_weights, dtype=tf.float32, trainable=False)
 
-    def build(self, input_shape):
-        super().build(input_shape)
-    
+    @property
+    def state_size(self):
+        return (self.max_reservoir_dim,)
+
     def call(self, inputs, states):
-        prev_state = states[0][:, :self.current_size]
-        
-        # Input and reservoir contributions
-        input_contribution = tf.matmul(inputs, tf.transpose(self.input_weights[:self.current_size]))
-        reservoir_contribution = tf.matmul(prev_state, self.reservoir_weights[:self.current_size, :self.current_size])
-        
-        # Update state using leak rate
+        prev_state = states[0][:, :tf.shape(self.reservoir_weights)[0]]
+        input_contribution = tf.matmul(inputs, self.input_weights, transpose_b=True)
+        reservoir_contribution = tf.matmul(prev_state, self.reservoir_weights)
         state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_contribution + reservoir_contribution)
-        
-        # Spiking mechanism
         spikes = tf.cast(tf.greater(state, self.spike_threshold), dtype=tf.float32)
         state = tf.where(spikes > 0, state - self.spike_threshold, state)
-        
-        # Pad state to max reservoir size
-        padded_state = tf.pad(state, [[0, 0], [0, self.max_reservoir_dim - tf.shape(state)[1]]])
-        
+        active_size = tf.shape(state)[-1]
+        padded_state = tf.pad(state, [[0, 0], [0, self.max_reservoir_dim - active_size]])
         return padded_state, [padded_state]
 
-    def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-        return [tf.zeros((batch_size, self.max_reservoir_dim), dtype=tf.float32)]
-
     def add_neurons(self):
-        current_size = self.current_size
+        current_size = tf.shape(self.reservoir_weights)[0]
         growth_rate = max(1, int(current_size * 0.1))  # Add 10% or at least 1 neuron
         new_neurons = min(growth_rate, self.max_reservoir_dim - current_size)
-        if current_size + new_neurons > self.max_reservoir_dim:
-            return  # No more neurons can be added
-        
-        # Create new neurons
-        new_reservoir_weights = tf.random.normal((new_neurons, self.current_size + new_neurons))
-        new_input_weights = tf.random.normal((new_neurons, self.input_dim)) * 0.1
-        
-        # Update reservoir weights
-        self.reservoir_weights = tf.concat([
-            tf.concat([self.reservoir_weights[:current_size, :current_size], 
-                       tf.zeros((current_size, new_neurons))], axis=1),
-            tf.concat([new_reservoir_weights[:, :current_size], 
-                       new_reservoir_weights[:, current_size:]], axis=1)], axis=0)
+        new_size = current_size + new_neurons
+        if new_size > self.max_reservoir_dim:
+            return
 
-        # Update input weights
-        self.input_weights = tf.concat([self.input_weights[:current_size, :], new_input_weights], axis=0)
-        
-        # Scale new reservoir weights to maintain spectral radius
-        spectral_radius = tf.reduce_max(tf.abs(tf.linalg.eigvals(self.reservoir_weights[:self.current_size + new_neurons, 
-                                                                                    :self.current_size + new_neurons])))
+        new_reservoir_weights = tf.random.normal((new_neurons, new_size))
+        full_new_weights = tf.concat([
+            tf.concat([self.reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1),
+            new_reservoir_weights
+        ], axis=0)
+        spectral_radius = tf.math.real(tf.reduce_max(tf.abs(tf.linalg.eigvals(full_new_weights))))
         scaling_factor = self.spectral_radius / spectral_radius
-        self.reservoir_weights = self.reservoir_weights * scaling_factor
-        
-        # Update current size
-        self.current_size += new_neurons
+        new_reservoir_weights *= scaling_factor
+        new_input_weights = tf.random.normal((new_neurons, self.input_dim)) * 0.1
+
+        updated_reservoir_weights = tf.concat([self.reservoir_weights, new_reservoir_weights[:, :current_size]], axis=0)
+        updated_reservoir_weights = tf.concat([updated_reservoir_weights, 
+                                               tf.concat([tf.transpose(new_reservoir_weights[:, :current_size]), 
+                                                          new_reservoir_weights[:, current_size:]], axis=0)], axis=1)
+        updated_input_weights = tf.concat([self.input_weights, new_input_weights], axis=0)
+        self.reservoir_weights = tf.Variable(updated_reservoir_weights, dtype=tf.float32, trainable=False)
+        self.input_weights = tf.Variable(updated_input_weights, dtype=tf.float32, trainable=False)
 
     def prune_connections(self):
         self.epoch_counter += 1
         if self.epoch_counter % self.pruning_frequency == 0:
-            # Prune small weights based on the pruning rate
             threshold = np.percentile(np.abs(self.reservoir_weights.numpy()), self.pruning_rate * 100)
             mask = tf.abs(self.reservoir_weights) > threshold
             self.reservoir_weights.assign(tf.where(mask, self.reservoir_weights, tf.zeros_like(self.reservoir_weights)))

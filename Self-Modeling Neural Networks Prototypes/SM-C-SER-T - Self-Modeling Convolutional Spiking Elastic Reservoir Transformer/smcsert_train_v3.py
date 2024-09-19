@@ -63,6 +63,9 @@ def main():
     test_loss, test_acc = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test.reshape(x_test.shape[0], -1)}, verbose=2)
     print(f"Test accuracy: {test_acc:.4f}")
     
+    # Save the model
+    model.save('Trained Models/smcsert_mnist_v3.keras')
+    
     plt.plot(history.history['classification_output_accuracy'], label='Train Accuracy')
     plt.plot(history.history['val_classification_output_accuracy'], label='Validation Accuracy')
     plt.xlabel('Epoch')
