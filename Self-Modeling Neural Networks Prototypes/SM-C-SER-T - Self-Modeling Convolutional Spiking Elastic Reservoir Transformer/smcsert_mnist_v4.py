@@ -75,7 +75,7 @@ class SpatioTemporalSummaryMixing(tf.keras.layers.Layer):
 
 # Spiking Elastic Liquid Neural Network (SELNN) Layer
 class SpikingElasticLNNStep(tf.keras.layers.Layer):
-    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, **kwargs):
+    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, hebbian_learning_rate=0.01, **kwargs):
         super().__init__(**kwargs)
         self.initial_reservoir_size = initial_reservoir_size
         self.input_dim = input_dim
@@ -83,35 +83,82 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
         self.leak_rate = leak_rate
         self.spike_threshold = spike_threshold
         self.max_reservoir_dim = max_reservoir_dim
-        
-        # Set state size to max_reservoir_dim
-        self.state_size = [self.max_reservoir_dim]
-        
-        self.reservoir_weights = None
-        self.input_weights = None
-        self.initialize_weights()
+        self.hebbian_learning_rate = hebbian_learning_rate
 
-    def initialize_weights(self):
+        self.state_size = [self.max_reservoir_dim]
+        self.reservoir_weights, self.input_weights, self.gate_weights = self.initialize_reservoir_weights()
+
+    def initialize_reservoir_weights(self):
+        # Initialize reservoir weights with spectral radius scaling
         reservoir_weights = np.random.randn(self.initial_reservoir_size, self.initial_reservoir_size)
         reservoir_weights *= self.spectral_radius / np.max(np.abs(np.linalg.eigvals(reservoir_weights)))
-        self.reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32, trainable=False)
-        
-        input_weights = np.random.randn(self.initial_reservoir_size, self.input_dim) * 0.1
-        self.input_weights = tf.Variable(input_weights, dtype=tf.float32, trainable=False)
+        reservoir_weights = tf.Variable(reservoir_weights, dtype=tf.float32, trainable=False)
+
+        # Initialize input weights
+        input_weights = np.random.randn(self.input_dim, self.initial_reservoir_size) * 0.1
+        input_weights = tf.Variable(input_weights, dtype=tf.float32, trainable=False)
+
+        # Initialize gate weights for input
+        gate_weights = np.random.randn(self.input_dim, 3 * self.initial_reservoir_size) * 0.1
+        gate_weights = tf.Variable(gate_weights, dtype=tf.float32, trainable=False)
+
+        return reservoir_weights, input_weights, gate_weights
 
     def call(self, inputs, states):
-        prev_state = states[0][:, :tf.shape(self.reservoir_weights)[0]]
-        input_contribution = tf.matmul(inputs, self.input_weights, transpose_b=True)
+        prev_state = states[0][:, :self.reservoir_weights.shape[0]]  # Get previous state size
+        
+        # Compute input and reservoir contributions
+        input_contribution = tf.matmul(inputs, self.input_weights)
         reservoir_contribution = tf.matmul(prev_state, self.reservoir_weights)
-        state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_contribution + reservoir_contribution)
+
+        # Compute gate contributions
+        gate_contribution = tf.matmul(inputs, self.gate_weights)
+        i_gate, f_gate, o_gate = tf.split(tf.sigmoid(gate_contribution), 3, axis=-1)
+
+        # Update the state using leak rate, gated contributions, and previous state
+        state = (1 - self.leak_rate) * (f_gate * prev_state) + self.leak_rate * tf.tanh(i_gate * (input_contribution + reservoir_contribution))
+        state = o_gate * state
+
+        # Spiking mechanism
         spikes = tf.cast(tf.greater(state, self.spike_threshold), dtype=tf.float32)
         state = tf.where(spikes > 0, state - self.spike_threshold, state)
+
+        # Update weights using Hebbian learning
+        self.update_weights(inputs, spikes)
+
+        # Padded output to ensure consistent reservoir size
         active_size = tf.shape(state)[-1]
-        padded_state = tf.pad(state, [[0, 0], [0, self.max_reservoir_dim - active_size]])
+        padded_state = tf.concat([state, tf.zeros([tf.shape(state)[0], self.max_reservoir_dim - active_size])], axis=1)
+
         return padded_state, [padded_state]
 
+    def update_weights(self, inputs, spikes):
+        # Hebbian weight update for input and reservoir weights
+        hebbian_input_update = self.hebbian_learning_rate * tf.matmul(tf.transpose(inputs), spikes)
+        hebbian_reservoir_update = self.hebbian_learning_rate * tf.matmul(tf.transpose(spikes), spikes)
+
+        self.input_weights.assign_add(hebbian_input_update)
+        self.reservoir_weights.assign_add(hebbian_reservoir_update)
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update({
+            'initial_reservoir_size': self.initial_reservoir_size,
+            'input_dim': self.input_dim,
+            'spectral_radius': self.spectral_radius,
+            'leak_rate': self.leak_rate,
+            'spike_threshold': self.spike_threshold,
+            'max_reservoir_dim': self.max_reservoir_dim,
+            'hebbian_learning_rate': self.hebbian_learning_rate
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
 # Combining Spatio-Temporal Mixing with SELNN
-def create_combined_model(input_shape, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
+def create_sm_stc_snn_model(input_shape, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim):
     inputs = Input(shape=input_shape)
     
     # Convolutional layers for feature extraction
@@ -137,7 +184,7 @@ def create_combined_model(input_shape, initial_reservoir_size, spectral_radius, 
         spike_threshold=spike_threshold,
         max_reservoir_dim=max_reservoir_dim
     )
-    
+
     rnn_layer = tf.keras.layers.RNN(selnn_step_layer, return_sequences=True)
     selnn_output = rnn_layer(x)
     selnn_output = Flatten()(selnn_output)
@@ -181,7 +228,7 @@ def main():
     epochs = 10
     batch_size = 64
     
-    model = create_combined_model(
+    model = create_sm_stc_snn_model(
         input_shape=input_shape,
         initial_reservoir_size=initial_reservoir_size,
         spectral_radius=spectral_radius,
@@ -227,4 +274,4 @@ if __name__ == "__main__":
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 4
 # with Summary Mixing Mechanism
 # python smcsert_mnist_v4.py
-# Test Accuracy: 0.9933
+# Test Accuracy: 0.9922
