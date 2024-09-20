@@ -7,8 +7,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 class SpikingElasticLNNStep(tf.keras.layers.Layer):
-    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, 
-                 max_reservoir_dim, learning_rate=0.01, pruning_frequency=5, pruning_rate=0.1, **kwargs):
+    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, pruning_frequency=5, pruning_rate=0.1, **kwargs):
         super().__init__(**kwargs)
         self.initial_reservoir_size = initial_reservoir_size
         self.input_dim = input_dim
@@ -16,14 +15,12 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
         self.leak_rate = leak_rate
         self.spike_threshold = spike_threshold
         self.max_reservoir_dim = max_reservoir_dim
-        self.learning_rate = learning_rate
         self.pruning_frequency = pruning_frequency
         self.pruning_rate = pruning_rate
         self.epoch_counter = 0
         
         self.reservoir_weights = None
         self.input_weights = None
-        self.activations = None
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -42,29 +39,25 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
         prev_state = states[0][:, :tf.shape(self.reservoir_weights)[0]]
         input_contribution = tf.matmul(inputs, self.input_weights, transpose_b=True)
         reservoir_contribution = tf.matmul(prev_state, self.reservoir_weights)
-        state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_contribution + reservoir_contribution)
         
-        # Apply Hebbian Learning (local learning based on co-activation)
-        self.hebbian_update(prev_state, state)
+        # Hebbian plasticity update (input * state-based weight update)
+        hebbian_update = tf.matmul(tf.transpose(prev_state), tf.tanh(input_contribution + reservoir_contribution))
+        self.reservoir_weights.assign_add(hebbian_update * 0.01)  # Hebbian learning rate
 
-        # Spiking behavior
+        state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_contribution + reservoir_contribution)
         spikes = tf.cast(tf.greater(state, self.spike_threshold), dtype=tf.float32)
         state = tf.where(spikes > 0, state - self.spike_threshold, state)
         
+        # Homeostatic scaling to maintain stability of weight growth
+        max_weight_norm = tf.norm(self.reservoir_weights, ord='fro', axis=[0, 1])
+        scaling_factor = self.spectral_radius / max_weight_norm
+        self.reservoir_weights.assign(self.reservoir_weights * scaling_factor)
+        
         active_size = tf.shape(state)[-1]
         padded_state = tf.pad(state, [[0, 0], [0, self.max_reservoir_dim - active_size]])
+        
         return padded_state, [padded_state]
-
-    def hebbian_update(self, prev_state, current_state):
-        # Hebbian learning rule: Δw_ij = η * activation_prev * activation_current
-        delta_w = self.learning_rate * tf.matmul(tf.expand_dims(prev_state, -1), tf.expand_dims(current_state, 1))
-        
-        # Sum along the batch dimension to ensure proper weight update
-        delta_w = tf.reduce_mean(delta_w, axis=0)
-        
-        # Update the reservoir weights
-        self.reservoir_weights.assign_add(delta_w)
-
+    
     def add_neurons(self):
         current_size = tf.shape(self.reservoir_weights)[0]
         growth_rate = max(1, int(current_size * 0.1))  # Add 10% or at least 1 neuron
@@ -74,19 +67,14 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
             return
 
         new_reservoir_weights = tf.random.normal((new_neurons, new_size))
-        full_new_weights = tf.concat([
-            tf.concat([self.reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1),
-            new_reservoir_weights
-        ], axis=0)
+        full_new_weights = tf.concat([tf.concat([self.reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1), new_reservoir_weights], axis=0)
         spectral_radius = tf.math.real(tf.reduce_max(tf.abs(tf.linalg.eigvals(full_new_weights))))
         scaling_factor = self.spectral_radius / spectral_radius
         new_reservoir_weights *= scaling_factor
         new_input_weights = tf.random.normal((new_neurons, self.input_dim)) * 0.1
 
         updated_reservoir_weights = tf.concat([self.reservoir_weights, new_reservoir_weights[:, :current_size]], axis=0)
-        updated_reservoir_weights = tf.concat([updated_reservoir_weights, 
-                                               tf.concat([tf.transpose(new_reservoir_weights[:, :current_size]), 
-                                                          new_reservoir_weights[:, current_size:]], axis=0)], axis=1)
+        updated_reservoir_weights = tf.concat([updated_reservoir_weights, tf.concat([tf.transpose(new_reservoir_weights[:, :current_size]), new_reservoir_weights[:, current_size:]], axis=0)], axis=1)
         updated_input_weights = tf.concat([self.input_weights, new_input_weights], axis=0)
         self.reservoir_weights = tf.Variable(updated_reservoir_weights, dtype=tf.float32, trainable=False)
         self.input_weights = tf.Variable(updated_input_weights, dtype=tf.float32, trainable=False)
@@ -262,6 +250,8 @@ if __name__ == "__main__":
 
 
 
+
 # Convolutional Self-Modeling Spiking Elastic Liquid Neural Network (CSMSELNN)
+# with Hebbian and Homeostatic Neuroplasticity
 # python csmselnn_mnist.py
-# Test Accuracy: 0.9920
+# Test Accuracy: 0.9929

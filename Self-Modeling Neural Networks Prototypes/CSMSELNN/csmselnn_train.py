@@ -104,5 +104,6 @@ if __name__ == "__main__":
 
 
 # Convolutional Self-Modeling Spiking Elastic Liquid Neural Network (CSMSELNN)
+# with Hebbian and Homeostatic Neuroplasticity
 # python csmselnn_train.py
-# Test Accuracy: 0.9920
+# Test Accuracy: 0.9916
