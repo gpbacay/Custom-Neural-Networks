@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from smcsert_mnist_v3 import ReservoirComputingLayer, PositionalEncoding, MultiDimAttention, FeedbackModulationLayer, ExpandDimsLayer
 
 # Load the trained model
 try:
@@ -80,4 +79,4 @@ if __name__ == "__main__":
 
 # Self-Modeling Convolutional Spiking Elastic Reservoir Transformer (SM-C-SER-T) version 3
 # python smcsert_deploy_v3.py
-# Remarks: 0.9811 (FAILED)
+# Remarks: FAILED (lacks self-modeling)

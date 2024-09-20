@@ -273,4 +273,4 @@ if __name__ == "__main__":
 # Self-Modeling Spatio-Temporal Convolutional Spiking Neural Network (SM-STC-SNN)
 # with Summary Mixing Mechanism (alternative for Attention Mechanism)
 # python sm_stc_snn.py
-# Test Accuracy: 0.9848
+# Test Accuracy: 0.9922

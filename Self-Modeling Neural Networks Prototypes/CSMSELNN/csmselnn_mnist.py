@@ -7,7 +7,8 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 class SpikingElasticLNNStep(tf.keras.layers.Layer):
-    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, pruning_frequency=5, pruning_rate=0.1, **kwargs):
+    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, 
+                 max_reservoir_dim, learning_rate=0.01, pruning_frequency=5, pruning_rate=0.1, **kwargs):
         super().__init__(**kwargs)
         self.initial_reservoir_size = initial_reservoir_size
         self.input_dim = input_dim
@@ -15,12 +16,14 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
         self.leak_rate = leak_rate
         self.spike_threshold = spike_threshold
         self.max_reservoir_dim = max_reservoir_dim
+        self.learning_rate = learning_rate
         self.pruning_frequency = pruning_frequency
         self.pruning_rate = pruning_rate
         self.epoch_counter = 0
         
         self.reservoir_weights = None
         self.input_weights = None
+        self.activations = None
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -40,11 +43,27 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
         input_contribution = tf.matmul(inputs, self.input_weights, transpose_b=True)
         reservoir_contribution = tf.matmul(prev_state, self.reservoir_weights)
         state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_contribution + reservoir_contribution)
+        
+        # Apply Hebbian Learning (local learning based on co-activation)
+        self.hebbian_update(prev_state, state)
+
+        # Spiking behavior
         spikes = tf.cast(tf.greater(state, self.spike_threshold), dtype=tf.float32)
         state = tf.where(spikes > 0, state - self.spike_threshold, state)
+        
         active_size = tf.shape(state)[-1]
         padded_state = tf.pad(state, [[0, 0], [0, self.max_reservoir_dim - active_size]])
         return padded_state, [padded_state]
+
+    def hebbian_update(self, prev_state, current_state):
+        # Hebbian learning rule: Δw_ij = η * activation_prev * activation_current
+        delta_w = self.learning_rate * tf.matmul(tf.expand_dims(prev_state, -1), tf.expand_dims(current_state, 1))
+        
+        # Sum along the batch dimension to ensure proper weight update
+        delta_w = tf.reduce_mean(delta_w, axis=0)
+        
+        # Update the reservoir weights
+        self.reservoir_weights.assign_add(delta_w)
 
     def add_neurons(self):
         current_size = tf.shape(self.reservoir_weights)[0]
