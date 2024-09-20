@@ -29,48 +29,37 @@ class SpatioTemporalSummaryMixing(tf.keras.layers.Layer):
         self.d_model = d_model
         self.d_ff = d_ff or 4 * d_model
 
-        # Local transformation (spatial aspect)
         self.local_dense1 = Dense(self.d_ff, activation='gelu')
         self.local_dense2 = Dense(d_model)
         self.local_dropout = Dropout(dropout_rate)
 
-        # Summary function (temporal aspect)
         self.summary_dense1 = Dense(self.d_ff, activation='gelu')
         self.summary_dense2 = Dense(d_model)
         self.summary_dropout = Dropout(dropout_rate)
 
-        # Combiner function (spatio-temporal combination)
         self.combiner_dense1 = Dense(self.d_ff, activation='gelu')
         self.combiner_dense2 = Dense(d_model)
         self.combiner_dropout = Dropout(dropout_rate)
 
-        # Layer normalization
         self.layer_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
     def call(self, inputs, training=False):
-        # Local (spatial) transformation
         local_output = self.local_dense1(inputs)
         local_output = self.local_dense2(local_output)
         local_output = self.local_dropout(local_output, training=training)
 
-        # Summary (temporal) function
         summary = self.summary_dense1(inputs)
         summary = self.summary_dense2(summary)
         summary = self.summary_dropout(summary, training=training)
 
-        # Calculate mean summary (temporal)
         mean_summary = tf.reduce_mean(summary, axis=1, keepdims=True)
-
-        # Repeat mean summary for each time step (temporal extension)
         mean_summary = tf.tile(mean_summary, [1, tf.shape(inputs)[1], 1])
 
-        # Combine local (spatial) and summary (temporal) information
         combined = tf.concat([local_output, mean_summary], axis=-1)
         output = self.combiner_dense1(combined)
         output = self.combiner_dense2(output)
         output = self.combiner_dropout(output, training=training)
 
-        # Residual connection and layer normalization
         return self.layer_norm(inputs + output)
 
 # Spiking Elastic Liquid Neural Network (SELNN) Layer
@@ -124,7 +113,7 @@ def create_combined_model(input_shape, initial_reservoir_size, spectral_radius, 
     x = GlobalAveragePooling2D()(x)
 
     # Reshape to add time dimension
-    x = Reshape((1, -1))(x)  # Adding a time dimension of size 1
+    x = Reshape((1, -1))(x)
 
     # Spatio-Temporal Summary Mixing Layer
     x = SpatioTemporalSummaryMixing(d_model=40)(x)
@@ -152,74 +141,83 @@ def create_combined_model(input_shape, initial_reservoir_size, spectral_radius, 
     x = Dropout(0.5)(x)
 
     # Multi-scale self-modeling mechanism (iterative refinement)
-    # Reshape x to have 3 dimensions for LSTM input
     x_reshaped = Reshape((1, 64))(x)
-    predicted_hidden = LSTM(64, return_sequences=False)(x_reshaped)  # Refine self-prediction over time
+    predicted_hidden = LSTM(64, return_sequences=False)(x_reshaped)
     predicted_hidden = Dense(np.prod(input_shape), activation='linear')(predicted_hidden)
-    predicted_hidden = Reshape(input_shape, name="self_modeling_output")(predicted_hidden)
+    predicted_hidden = Reshape(input_shape, name="predicted_hidden")(predicted_hidden)
 
     # Final classification output
-    outputs = Dense(output_dim, activation='softmax', name="classification_output")(x)
+    classification_output = Dense(output_dim, activation='softmax', name="classification_output")(x)
 
-    model = tf.keras.Model(inputs, [outputs, predicted_hidden])
+    # Self-modeling output
+    self_modeling_output = Dense(np.prod(input_shape), activation='sigmoid', name="self_modeling_dense")(x)
+    self_modeling_output = Reshape(input_shape, name="self_modeling_output")(self_modeling_output)
+
+    model = tf.keras.Model(inputs, [classification_output, self_modeling_output])
     return model
 
 # Preprocess Data
 def preprocess_data(x):
-    return x.astype(np.float32) / 255.0
+    return x.astype('float32') / 255.0
 
 def main():
+    # Load your dataset here
     (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+    x_train = np.expand_dims(preprocess_data(x_train), -1)
+    x_test = np.expand_dims(preprocess_data(x_test), -1)
+    
+    y_train = to_categorical(y_train, num_classes=10)
+    y_test = to_categorical(y_test, num_classes=10)
+
+    # Split for validation
     x_train, x_val, y_train, y_val = train_test_split(x_train, y_train, test_size=0.1, random_state=42)
 
-    # One-hot encode labels
-    y_train = to_categorical(y_train, 10)
-    y_val = to_categorical(y_val, 10)
-    y_test = to_categorical(y_test, 10)
+    input_shape = x_train.shape[1:]
+    output_dim = 10  # Number of classes
 
-    x_train = preprocess_data(x_train).reshape(-1, 28, 28, 1)
-    x_val = preprocess_data(x_val).reshape(-1, 28, 28, 1)
-    x_test = preprocess_data(x_test).reshape(-1, 28, 28, 1)
+    model = create_combined_model(
+        input_shape=input_shape,
+        initial_reservoir_size=512,
+        spectral_radius=0.9,
+        leak_rate=0.1,
+        spike_threshold=0.5,
+        max_reservoir_dim=4096,
+        output_dim=output_dim
+    )
 
-    input_shape = (x_train.shape[1], x_train.shape[2], 1)
-    initial_reservoir_size = 100
-    spectral_radius = 0.95
-    leak_rate = 0.2
-    spike_threshold = 0.5
-    max_reservoir_dim = 200
-    output_dim = 10
-    
-    model = create_combined_model(input_shape, initial_reservoir_size, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, output_dim)
-    
-    model.compile(optimizer='adam',
-                  loss={'classification_output': 'categorical_crossentropy',
-                        'self_modeling_output': 'mean_squared_error'},
-                  metrics={'classification_output': 'accuracy'})
-    
-    early_stopping = EarlyStopping(monitor='val_loss', patience=5)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3)
-    
-    history = model.fit(x_train, [y_train, x_train],
-                        validation_data=(x_val, [y_val, x_val]),
-                        epochs=10,
-                        batch_size=64,
-                        callbacks=[early_stopping, reduce_lr])
-    
-    # Plot the training and validation accuracy
-    plt.plot(history.history['classification_output_accuracy'])
-    plt.plot(history.history['val_classification_output_accuracy'])
-    plt.title('Model accuracy')
-    plt.xlabel('Epoch')
+    model.compile(optimizer='adam', 
+            loss={'classification_output': 'categorical_crossentropy', 'self_modeling_output': 'mse'},
+            metrics={
+                'classification_output': 'accuracy',
+                'self_modeling_output': 'mse'
+            })
+
+    early_stopping = EarlyStopping(patience=5, restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(patience=3)
+
+    history = model.fit(x_train, 
+                    {'classification_output': y_train, 'self_modeling_output': x_train},
+                    validation_data=(x_val, {'classification_output': y_val, 'self_modeling_output': x_val}),
+                    epochs=10,
+                    batch_size=64,
+                    callbacks=[early_stopping, reduce_lr])
+
+    # Evaluate the model
+    test_results = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_dense': x_test}, verbose=0)
+    print(f'Test loss: {test_results[0]:.4f}, Test accuracy: {test_results[1]:.4f}')
+
+    # Plot training history
+    plt.plot(history.history['classification_output_accuracy'], label='train accuracy')
+    plt.plot(history.history['val_classification_output_accuracy'], label='val accuracy')
+    plt.title('Model Accuracy')
     plt.ylabel('Accuracy')
-    plt.legend(['Train', 'Validation'], loc='upper left')
+    plt.xlabel('Epoch')
+    plt.legend()
     plt.show()
-    
-    # Evaluate the model on the test set
-    test_loss, test_acc = model.evaluate(x_test, [y_test, x_test])
-    print(f"Test accuracy: {test_acc:.4f}")
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
+
 
 
 
