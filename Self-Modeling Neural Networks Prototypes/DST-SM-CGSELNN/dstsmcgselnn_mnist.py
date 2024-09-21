@@ -16,20 +16,25 @@ class HebbianHomeostaticLayer(tf.keras.layers.Layer):
         self.homeostatic_rate = homeostatic_rate
     
     def build(self, input_shape):
-        self.weights = self.add_weight(shape=(input_shape[-1], self.units),
-                                       initializer='random_normal',
-                                       trainable=True)
+        # Use self.add_weight instead of direct assignment
+        self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
+                                      initializer='random_normal',
+                                      trainable=True)
     
     def call(self, inputs):
-        outputs = tf.matmul(inputs, self.weights)
-        
+        # Flatten inputs or squeeze the sequence dimension
+        inputs = tf.squeeze(inputs, axis=1)  # Removes the middle dimension (batch_size, 1, 512) -> (batch_size, 512)
+
+        # Forward pass: compute outputs
+        outputs = tf.matmul(inputs, self.kernel)
+
         # Hebbian update
         delta_weights = self.learning_rate * tf.matmul(tf.transpose(inputs), outputs)
-        self.weights.assign_add(delta_weights)
+        self.kernel.assign_add(delta_weights)
 
         # Homeostatic update
-        avg_activation = tf.reduce_mean(self.weights)
-        self.weights.assign_sub(self.homeostatic_rate * (avg_activation - self.target_avg))
+        avg_activation = tf.reduce_mean(self.kernel)
+        self.kernel.assign_sub(self.homeostatic_rate * (avg_activation - self.target_avg))
 
         return outputs
 
@@ -176,12 +181,16 @@ def create_dst_sm_cgselnn_model(input_shape, reservoir_dim, spectral_radius, lea
         return_sequences=True
     )
     lnn_output = lnn_layer(x)
-    lnn_output = Flatten()(lnn_output)
+    
+    # Integrate HebbianHomeostaticLayer
+    hebbian_homeostatic_layer = HebbianHomeostaticLayer(units=reservoir_dim, name='hebbian_homeostatic_layer')
+    hebbian_output = hebbian_homeostatic_layer(lnn_output)
+    hebbian_output = Flatten()(hebbian_output)
 
     # Self-modeling Mechanism: Auxiliary task
-    self_modeling_output = Dense(output_dim, activation='softmax', name='self_modeling_output')(lnn_output)
+    self_modeling_output = Dense(output_dim, activation='softmax', name='self_modeling_output')(hebbian_output)
 
-    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(l2_reg))(lnn_output)
+    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(l2_reg))(hebbian_output)
     x = Dropout(0.5)(x)
     outputs = Dense(output_dim, activation='softmax', name='main_output', kernel_regularizer=tf.keras.regularizers.l2(l2_reg))(x)
 
@@ -244,4 +253,4 @@ if __name__ == "__main__":
 
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
 # python dstsmcgselnn_mnist.py
-# Test Accuracy: 0.9942
+# Test Accuracy: To be determined after running the updated code
