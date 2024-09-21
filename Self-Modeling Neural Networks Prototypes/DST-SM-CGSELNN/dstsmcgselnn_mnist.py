@@ -209,7 +209,7 @@ def main():
 
     # Evaluate model
     loss, accuracy = model.evaluate(x_test, y_test)
-    print(f'Test Loss: {loss}, Test Accuracy: {accuracy}')
+    print(f'Test Loss: {loss:.4f}, Test Accuracy: {accuracy:.4f}')
 
     # Plot training history
     plt.figure(figsize=(12, 4))
