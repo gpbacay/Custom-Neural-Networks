@@ -43,7 +43,7 @@ class HebbianHomeostaticLayer(tf.keras.layers.Layer):
         })
         return config
 
-# Spiking Reservoir Layer (adjusted for TensorFlow's RNN layer compatibility)
+# Gated Spiking Reservoir Layer
 class GatedSpikingReservoirStep(tf.keras.layers.Layer):
     def __init__(self, spatiotemporal_reservoir_weights, spatiotemporal_input_weights, spiking_gate_weights, leak_rate, spike_threshold, max_dynamic_reservoir_dim, **kwargs):
         super().__init__(**kwargs)
@@ -54,7 +54,6 @@ class GatedSpikingReservoirStep(tf.keras.layers.Layer):
         self.spike_threshold = spike_threshold
         self.max_dynamic_reservoir_dim = max_dynamic_reservoir_dim
         
-        # State size and output size should match
         self.state_size = [self.max_dynamic_reservoir_dim]
         self.output_size = self.max_dynamic_reservoir_dim
 
@@ -156,7 +155,7 @@ class SpatioTemporalSummaryMixing(tf.keras.layers.Layer):
         return config
 
 # Model creation with neuroplasticity and neurogenesis
-def create_dstr_ct_gsr_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim, d_model=64, l2_reg=1e-4):
+def create_dst_sm_cgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim, d_model=64, l2_reg=1e-4):
     inputs = Input(shape=input_shape)
 
     x = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
@@ -208,7 +207,7 @@ def main():
     d_model = 64
 
     # Create Model
-    model = create_dstr_ct_gsr_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim, d_model)
+    model = create_dst_sm_cgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim, d_model)
 
     # Compile Model
     model.compile(optimizer='adam', 
@@ -243,8 +242,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-# Dynamic Spatio-Tempo-Relational Convolutional Transformer with Gated Spiking Reservoir (DSTR-CT-GSR) version 3
-# with Gating Mechanism, Self-modeling Mechanism, Hebbian and Homeostatic Neuroplasticity, and Neurogenesis/Synaptogenesis Mechanism
-# python dstrctgsr_mnist_v3.py
+# Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
+# python dstsmcgselnn_mnist.py
 # Test Accuracy: 0.9942
