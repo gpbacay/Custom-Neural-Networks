@@ -6,9 +6,8 @@ from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
 import matplotlib.pyplot as plt
 
-# Hebbian Learning and Homeostatic Updates integrated into a custom layer
 class HebbianHomeostaticLayer(tf.keras.layers.Layer):
-    def __init__(self, units, learning_rate=0.01, target_avg=0.5, homeostatic_rate=0.001, **kwargs):
+    def __init__(self, units, learning_rate=0.001, target_avg=0.5, homeostatic_rate=0.001, **kwargs):
         super(HebbianHomeostaticLayer, self).__init__(**kwargs)
         self.units = units
         self.learning_rate = learning_rate
@@ -16,16 +15,12 @@ class HebbianHomeostaticLayer(tf.keras.layers.Layer):
         self.homeostatic_rate = homeostatic_rate
     
     def build(self, input_shape):
-        # Use self.add_weight instead of direct assignment
         self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
                                       initializer='random_normal',
                                       trainable=True)
     
     def call(self, inputs):
-        # Flatten inputs or squeeze the sequence dimension
-        inputs = tf.squeeze(inputs, axis=1)  # Removes the middle dimension (batch_size, 1, 512) -> (batch_size, 512)
-
-        # Forward pass: compute outputs
+        inputs = tf.squeeze(inputs, axis=1)
         outputs = tf.matmul(inputs, self.kernel)
 
         # Hebbian update
@@ -48,7 +43,6 @@ class HebbianHomeostaticLayer(tf.keras.layers.Layer):
         })
         return config
 
-# Gated Spiking Reservoir Layer
 class GatedSpikingReservoirStep(tf.keras.layers.Layer):
     def __init__(self, spatiotemporal_reservoir_weights, spatiotemporal_input_weights, spiking_gate_weights, leak_rate, spike_threshold, max_dynamic_reservoir_dim, **kwargs):
         super().__init__(**kwargs)
@@ -95,7 +89,6 @@ class GatedSpikingReservoirStep(tf.keras.layers.Layer):
         })
         return config
 
-# Initialize spatiotemporal reservoir
 def initialize_spatiotemporal_reservoir(input_dim, reservoir_dim, spectral_radius):
     spatiotemporal_reservoir_weights = np.random.randn(reservoir_dim, reservoir_dim)
     spatiotemporal_reservoir_weights *= spectral_radius / np.max(np.abs(np.linalg.eigvals(spatiotemporal_reservoir_weights)))
@@ -103,29 +96,18 @@ def initialize_spatiotemporal_reservoir(input_dim, reservoir_dim, spectral_radiu
     spiking_gate_weights = np.random.randn(3 * reservoir_dim, input_dim) * 0.1
     return spatiotemporal_reservoir_weights, spatiotemporal_input_weights, spiking_gate_weights
 
-# Simplified neurogenesis dynamic pruning and growth mechanism
-def neurogenesis_dynamic_pruning(weights, prune_rate=0.01):
-    num_pruning_synapses = int(prune_rate * np.prod(weights.shape))
-    weights_flattened = tf.reshape(weights, [-1])
-    weights_flattened_sorted = tf.sort(tf.abs(weights_flattened))
-    threshold = weights_flattened_sorted[num_pruning_synapses]
-    pruned_weights = tf.where(tf.abs(weights) < threshold, tf.zeros_like(weights), weights)
-    return pruned_weights
-
-# Spatio-Temporal Summary Mixing Layer
 class SpatioTemporalSummaryMixing(tf.keras.layers.Layer):
-    def __init__(self, d_model, d_ff=None, dropout_rate=0.1, **kwargs):
+    def __init__(self, d_model, dropout_rate=0.1, **kwargs):
         super(SpatioTemporalSummaryMixing, self).__init__(**kwargs)
         self.d_model = d_model
-        self.d_ff = d_ff or 4 * d_model
         self.dropout_rate = dropout_rate
-        self.local_dense1 = Dense(self.d_ff, activation='gelu')
+        self.local_dense1 = Dense(4 * self.d_model, activation='gelu')
         self.local_dense2 = Dense(self.d_model)
         self.local_dropout = Dropout(dropout_rate)
-        self.summary_dense1 = Dense(self.d_ff, activation='gelu')
+        self.summary_dense1 = Dense(4 * self.d_model, activation='gelu')
         self.summary_dense2 = Dense(self.d_model)
         self.summary_dropout = Dropout(dropout_rate)
-        self.combiner_dense1 = Dense(self.d_ff, activation='gelu')
+        self.combiner_dense1 = Dense(4 * self.d_model, activation='gelu')
         self.combiner_dense2 = Dense(self.d_model)
         self.combiner_dropout = Dropout(dropout_rate)
         self.layer_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
@@ -154,13 +136,11 @@ class SpatioTemporalSummaryMixing(tf.keras.layers.Layer):
         config = super(SpatioTemporalSummaryMixing, self).get_config()
         config.update({
             'd_model': self.d_model,
-            'd_ff': self.d_ff,
             'dropout_rate': self.dropout_rate,
         })
         return config
 
-# Model creation with neuroplasticity and neurogenesis
-def create_dst_sm_cgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim, d_model=64, l2_reg=1e-4):
+def create_dst_sm_cgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim):
     inputs = Input(shape=input_shape)
 
     x = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
@@ -181,75 +161,79 @@ def create_dst_sm_cgselnn_model(input_shape, reservoir_dim, spectral_radius, lea
         return_sequences=True
     )
     lnn_output = lnn_layer(x)
-    
+
     # Integrate HebbianHomeostaticLayer
     hebbian_homeostatic_layer = HebbianHomeostaticLayer(units=reservoir_dim, name='hebbian_homeostatic_layer')
     hebbian_output = hebbian_homeostatic_layer(lnn_output)
-    hebbian_output = Flatten()(hebbian_output)
 
-    # Self-modeling Mechanism: Auxiliary task
-    self_modeling_output = Dense(output_dim, activation='softmax', name='self_modeling_output')(hebbian_output)
-
-    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(l2_reg))(hebbian_output)
+    # Output Layer
+    x = Flatten()(hebbian_output)
+    x = Dense(128, activation='relu')(x)
     x = Dropout(0.5)(x)
-    outputs = Dense(output_dim, activation='softmax', name='main_output', kernel_regularizer=tf.keras.regularizers.l2(l2_reg))(x)
+    outputs = Dense(output_dim, activation='softmax')(x)
 
-    model = tf.keras.Model(inputs, [outputs, self_modeling_output])
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
+
     return model
 
 def main():
-    # Load and Prepare MNIST Data for Spatio-Temporal Processing
+    # Load and preprocess MNIST dataset
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train, x_test = x_train / 255.0, x_test / 255.0
-    x_train = np.expand_dims(x_train, axis=-1)
-    x_test = np.expand_dims(x_test, axis=-1)
-    y_train, y_test = to_categorical(y_train), to_categorical(y_test)
+    x_train = np.expand_dims(x_train, axis=-1).astype('float32') / 255.0
+    x_test = np.expand_dims(x_test, axis=-1).astype('float32') / 255.0
+    y_train = to_categorical(y_train, 10)
+    y_test = to_categorical(y_test, 10)
 
-    # Model Parameters
-    input_shape = x_train.shape[1:]
-    output_dim = 10  # Number of classes for MNIST
-    reservoir_dim = 256
-    spectral_radius = 1.25
-    leak_rate = 0.1
+    # Hyperparameters
+    input_shape = (28, 28, 1)
+    reservoir_dim = 100
+    spectral_radius = 0.9
+    leak_rate = 0.2
     spike_threshold = 0.5
-    max_dynamic_reservoir_dim = 512
-    d_model = 64
+    max_dynamic_reservoir_dim = reservoir_dim
+    output_dim = 10
 
-    # Create Model
-    model = create_dst_sm_cgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim, d_model)
+    # Create model
+    model = create_dst_sm_cgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim)
 
-    # Compile Model
-    model.compile(optimizer='adam', 
-                  loss={'main_output': 'categorical_crossentropy', 'self_modeling_output': 'categorical_crossentropy'},
-                  metrics={'main_output': 'accuracy', 'self_modeling_output': 'accuracy'})
+    # Compile model
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-5, clipnorm=1.0)
+    model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'])
 
-    # Define Callbacks
+    # Callbacks
     early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3)
 
-    # Train Model
-    history = model.fit(x_train, 
-                        {'main_output': y_train, 'self_modeling_output': y_train}, 
-                        validation_data=(x_test, {'main_output': y_test, 'self_modeling_output': y_test}), 
-                        epochs=10, batch_size=64, 
-                        callbacks=[early_stopping, reduce_lr])
+    # Train model
+    history = model.fit(x_train, y_train, epochs=10, batch_size=64, validation_split=0.2, callbacks=[early_stopping, reduce_lr])
 
-    # Evaluate Model
-    test_loss, test_acc_main, test_acc_self = model.evaluate(x_test, {'main_output': y_test, 'self_modeling_output': y_test}, verbose=2)
-    print(f'Test accuracy (main output): {test_acc_main:.4f}')
-    print(f'Test accuracy (self-modeling output): {test_acc_self:.4f}')
+    # Evaluate model
+    loss, accuracy = model.evaluate(x_test, y_test)
+    print(f'Test Loss: {loss}, Test Accuracy: {accuracy}')
 
-    # Plot Training History
-    plt.plot(history.history['main_output_accuracy'], label='Main Output Accuracy')
-    plt.plot(history.history['self_modeling_output_accuracy'], label='Self-Modeling Output Accuracy')
+    # Plot training history
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['loss'], label='train')
+    plt.plot(history.history['val_loss'], label='val')
+    plt.title('Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['accuracy'], label='train')
+    plt.plot(history.history['val_accuracy'], label='val')
+    plt.title('Accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
-    plt.ylim([0, 1])
-    plt.legend(loc='lower right')
+    plt.legend()
+
     plt.show()
 
 if __name__ == "__main__":
     main()
+
 
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
 # python dstsmcgselnn_mnist.py
