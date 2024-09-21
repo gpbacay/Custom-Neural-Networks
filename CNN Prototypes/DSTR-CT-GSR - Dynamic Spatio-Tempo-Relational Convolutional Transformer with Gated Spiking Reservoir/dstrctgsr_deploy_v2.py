@@ -76,6 +76,7 @@ if __name__ == "__main__":
     else:
         print("Prediction failed.")
 
-# Dynamic Spatio-Tempo-Relational Convolutional Transformer with Gated Spiking Reservoir (DSTR-CT-GSR)
+# Dynamic Spatio-Tempo-Relational Convolutional Transformer with Gated Spiking Reservoir (DSTR-CT-GSR) version 2
+# with Spatio-Temporal Summary Mixing Mechanism (as an alternative for Attention Mechanism)
 # python dstrctgsr_deploy_v2.py
 # Remarks: PASSED! (with 99.48% accuracy and predicted digit-7 correctly with 100% confidence)

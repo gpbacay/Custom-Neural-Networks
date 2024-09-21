@@ -53,5 +53,6 @@ if __name__ == "__main__":
     main()
 
 # Dynamic Spatio-Tempo-Relational Convolutional Transformer with Gated Spiking Reservoir (DSTR-CT-GSR) version 2
+# with Spatio-Temporal Summary Mixing Mechanism (as an alternative for Attention Mechanism)
 # python dstrctgsr_train_v2.py
 # Test Accuracy: 0.9948
