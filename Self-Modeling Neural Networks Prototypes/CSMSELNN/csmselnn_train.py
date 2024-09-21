@@ -87,6 +87,9 @@ def main():
     test_loss, test_acc = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test.reshape(x_test.shape[0], -1)}, verbose=2)
     print(f"Test accuracy: {test_acc:.4f}")
     
+    # Save the model
+    model.save('Trained Models/csmselnn_mnist.keras')
+    
     # Plot training history
     plt.plot(history.history['classification_output_accuracy'], label='Train Accuracy')
     plt.plot(history.history['val_classification_output_accuracy'], label='Validation Accuracy')
@@ -94,9 +97,6 @@ def main():
     plt.ylabel('Accuracy')
     plt.legend()
     plt.show()
-    
-    # Save the model
-    model.save('Trained Models/csmselnn_mnist.keras')
 
 if __name__ == "__main__":
     main()
