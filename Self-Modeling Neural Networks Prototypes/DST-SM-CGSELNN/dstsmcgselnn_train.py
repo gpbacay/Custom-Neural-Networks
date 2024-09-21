@@ -64,5 +64,5 @@ if __name__ == "__main__":
 
 
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
-# python dstsmcgselnn_mnist.py
+# python dstsmcgselnn_train.py
 # Test Accuracy: 0.9942
