@@ -78,4 +78,4 @@ if __name__ == "__main__":
 
 # Convolutional Self-Modeling Spiking Elastic Liquid Neural Network (CSMSELNN)
 # python csmselnn_train_v1.py
-# Test Accuracy: 0.9920
+# Test Accuracy: 0.9904

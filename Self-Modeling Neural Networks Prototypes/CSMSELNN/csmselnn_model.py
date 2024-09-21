@@ -4,7 +4,9 @@ from tensorflow.keras.layers import Dense, Input, Flatten, Layer, Conv2D, MaxPoo
 
 # Custom Keras Layer for Spiking Elastic Liquid Neural Network (SELNN) Step
 class SpikingElasticLNNStep(tf.keras.layers.Layer):
-    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, max_reservoir_dim, pruning_frequency=5, pruning_rate=0.1, **kwargs):
+    def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, 
+                 max_reservoir_dim, pruning_frequency=5, pruning_rate=0.1, 
+                 hebbian_lr=0.01, homeostatic_lr=0.001, target_activity=0.1, **kwargs):
         super().__init__(**kwargs)
         self.initial_reservoir_size = initial_reservoir_size
         self.input_dim = input_dim
@@ -16,8 +18,14 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
         self.pruning_rate = pruning_rate
         self.epoch_counter = 0
         
+        # Plasticity parameters
+        self.hebbian_lr = hebbian_lr
+        self.homeostatic_lr = homeostatic_lr
+        self.target_activity = target_activity
+        
         self.reservoir_weights = None
         self.input_weights = None
+        self.neuron_activities = None
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -27,6 +35,8 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
         
         input_weights = np.random.randn(self.initial_reservoir_size, self.input_dim) * 0.1
         self.input_weights = tf.Variable(input_weights, dtype=tf.float32, trainable=False)
+        
+        self.neuron_activities = tf.Variable(tf.zeros((self.initial_reservoir_size,)), dtype=tf.float32, trainable=False)
 
     @property
     def state_size(self):
@@ -37,15 +47,23 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
         input_contribution = tf.matmul(inputs, self.input_weights, transpose_b=True)
         reservoir_contribution = tf.matmul(prev_state, self.reservoir_weights)
         
-        # Hebbian plasticity update (input * state-based weight update)
+        # Hebbian plasticity
         hebbian_update = tf.matmul(tf.transpose(prev_state), tf.tanh(input_contribution + reservoir_contribution))
-        self.reservoir_weights.assign_add(hebbian_update * 0.01)  # Hebbian learning rate
-
+        self.reservoir_weights.assign_add(hebbian_update * self.hebbian_lr)
+        
         state = (1 - self.leak_rate) * prev_state + self.leak_rate * tf.tanh(input_contribution + reservoir_contribution)
         spikes = tf.cast(tf.greater(state, self.spike_threshold), dtype=tf.float32)
         state = tf.where(spikes > 0, state - self.spike_threshold, state)
         
-        # Homeostatic scaling to maintain stability of weight growth
+        # Update neuron activities
+        self.neuron_activities.assign(0.9 * self.neuron_activities + 0.1 * tf.reduce_mean(spikes, axis=0))
+        
+        # Homeostatic plasticity
+        activity_diff = self.neuron_activities - self.target_activity
+        homeostatic_update = tf.expand_dims(activity_diff, 0) * self.reservoir_weights
+        self.reservoir_weights.assign_sub(homeostatic_update * self.homeostatic_lr)
+        
+        # Maintain spectral radius
         max_weight_norm = tf.norm(self.reservoir_weights, ord='fro', axis=[0, 1])
         scaling_factor = self.spectral_radius / max_weight_norm
         self.reservoir_weights.assign(self.reservoir_weights * scaling_factor)
@@ -54,7 +72,7 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
         padded_state = tf.pad(state, [[0, 0], [0, self.max_reservoir_dim - active_size]])
         
         return padded_state, [padded_state]
-    
+
     def add_neurons(self):
         current_size = tf.shape(self.reservoir_weights)[0]
         growth_rate = max(1, int(current_size * 0.1))  # Add 10% or at least 1 neuron
@@ -64,17 +82,25 @@ class SpikingElasticLNNStep(tf.keras.layers.Layer):
             return
 
         new_reservoir_weights = tf.random.normal((new_neurons, new_size))
-        full_new_weights = tf.concat([tf.concat([self.reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1), new_reservoir_weights], axis=0)
+        full_new_weights = tf.concat([
+            tf.concat([self.reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1),
+            new_reservoir_weights
+        ], axis=0)
         spectral_radius = tf.math.real(tf.reduce_max(tf.abs(tf.linalg.eigvals(full_new_weights))))
         scaling_factor = self.spectral_radius / spectral_radius
         new_reservoir_weights *= scaling_factor
         new_input_weights = tf.random.normal((new_neurons, self.input_dim)) * 0.1
 
         updated_reservoir_weights = tf.concat([self.reservoir_weights, new_reservoir_weights[:, :current_size]], axis=0)
-        updated_reservoir_weights = tf.concat([updated_reservoir_weights, tf.concat([tf.transpose(new_reservoir_weights[:, :current_size]), new_reservoir_weights[:, current_size:]], axis=0)], axis=1)
+        updated_reservoir_weights = tf.concat([updated_reservoir_weights, 
+                                               tf.concat([tf.transpose(new_reservoir_weights[:, :current_size]), 
+                                                          new_reservoir_weights[:, current_size:]], axis=0)], axis=1)
         updated_input_weights = tf.concat([self.input_weights, new_input_weights], axis=0)
         self.reservoir_weights = tf.Variable(updated_reservoir_weights, dtype=tf.float32, trainable=False)
         self.input_weights = tf.Variable(updated_input_weights, dtype=tf.float32, trainable=False)
+        
+        # Update neuron activities tensor
+        self.neuron_activities = tf.Variable(tf.concat([self.neuron_activities, tf.zeros((new_neurons,))], axis=0), dtype=tf.float32, trainable=False)
 
     def prune_connections(self):
         self.epoch_counter += 1

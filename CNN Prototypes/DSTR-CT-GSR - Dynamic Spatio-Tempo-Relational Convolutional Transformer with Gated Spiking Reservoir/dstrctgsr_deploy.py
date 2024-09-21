@@ -2,14 +2,11 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from dstrctgsr_model import GatedSLNNStep
 
 # Load the trained model
 try:
     MODEL_FILEPATH = 'Trained Models/dstrctgsr_mnist.keras'
-    model = tf.keras.models.load_model(MODEL_FILEPATH, custom_objects={
-        'GatedSLNNStep': GatedSLNNStep
-    })
+    model = tf.keras.models.load_model(MODEL_FILEPATH)
     print("Model loaded successfully.")
 except FileNotFoundError:
     print(f"Error: The {MODEL_FILEPATH} model file was not found.")

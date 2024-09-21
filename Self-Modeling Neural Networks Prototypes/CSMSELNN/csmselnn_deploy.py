@@ -78,5 +78,6 @@ if __name__ == "__main__":
 
 
 # Convolutional Self-Modeling Spiking Elastic Liquid Neural Network (CSMSELNN)
+# with Hebbian and Homeostatic Neuroplasticity
 # python csmselnn_deploy.py
 # Remarks: PASSED! (with 90% confidence for digit 7)

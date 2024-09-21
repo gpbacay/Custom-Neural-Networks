@@ -70,4 +70,4 @@ if __name__ == "__main__":
 
 # CSM-GSLNN - Convolutional Self-Modeling Gated Spiking Liquid Neural Network
 # python csmgslnn_deploy.py
-# Remarks: Passed (with jsut 0.9904 accuracy!)
+# Remarks: FAILED

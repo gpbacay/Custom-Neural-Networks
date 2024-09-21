@@ -49,4 +49,4 @@ if __name__ == "__main__":
 
 # DSTR-CT-GSR - Dynamic Spatio-Tempo-Relational Convolutional Transformer with Gated Spiking Reservoir
 # python dstrctgsr_train.py
-# Test Accuracy: 0.9930
+# Test Accuracy: 0.9913
