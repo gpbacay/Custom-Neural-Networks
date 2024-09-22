@@ -3,66 +3,102 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.datasets import mnist
 from tensorflow.keras.utils import to_categorical
 import matplotlib.pyplot as plt
-from dstsmcgselnn_model import create_dst_sm_cgselnn_model
+from dstsmcgselnn_model import create_dstsmcgselnn_model, SelfModelingCallback
 
 def main():
-    # Load and Prepare MNIST Data for Spatio-Temporal Processing
+    # Load and preprocess MNIST dataset
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train, x_test = x_train / 255.0, x_test / 255.0
-    x_train = np.expand_dims(x_train, axis=-1)
-    x_test = np.expand_dims(x_test, axis=-1)
-    y_train, y_test = to_categorical(y_train), to_categorical(y_test)
+    x_train = np.expand_dims(x_train, axis=-1).astype('float32') / 255.0
+    x_test = np.expand_dims(x_test, axis=-1).astype('float32') / 255.0
+    y_train = to_categorical(y_train, 10)
+    y_test = to_categorical(y_test, 10)
 
-    # Model Parameters
-    input_shape = x_train.shape[1:]
-    output_dim = 10  # Number of classes for MNIST
-    reservoir_dim = 256
-    spectral_radius = 1.25
-    leak_rate = 0.1
+    # Flatten images for self-modeling task
+    x_train_flat = x_train.reshape((x_train.shape[0], -1))
+    x_test_flat = x_test.reshape((x_test.shape[0], -1))
+
+    # Hyperparameters
+    input_shape = (28, 28, 1)
+    reservoir_dim = 100
+    spectral_radius = 0.9
+    leak_rate = 0.2
     spike_threshold = 0.5
-    max_dynamic_reservoir_dim = 512
-    d_model = 64
+    max_dynamic_reservoir_dim = 1000
+    output_dim = 10
 
-    # Create Model
-    model = create_dst_sm_cgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim, d_model)
+    # Create model
+    model, reservoir_layer = create_dstsmcgselnn_model(
+        input_shape=input_shape,
+        reservoir_dim=reservoir_dim,
+        spectral_radius=spectral_radius,
+        leak_rate=leak_rate,
+        spike_threshold=spike_threshold,
+        max_dynamic_reservoir_dim=max_dynamic_reservoir_dim,
+        output_dim=output_dim
+    )
 
-    # Compile Model
-    model.compile(optimizer='adam', 
-                  loss={'main_output': 'categorical_crossentropy', 'self_modeling_output': 'categorical_crossentropy'},
-                  metrics={'main_output': 'accuracy', 'self_modeling_output': 'accuracy'})
+    # Compile the model
+    model.compile(
+        optimizer='adam', 
+        loss={'classification_output': 'categorical_crossentropy', 'self_modeling_output': 'mse'},
+        metrics={'classification_output': 'accuracy', 'self_modeling_output': 'mse'}
+    )
 
-    # Define Callbacks
-    early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3)
+    # Define callbacks
+    early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=10, mode='max', restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=5, mode='max')
+    self_modeling_callback = SelfModelingCallback(
+        reservoir_layer=reservoir_layer,
+        performance_metric='val_classification_output_accuracy',
+        target_metric=0.95,
+        add_neurons_threshold=0.01,
+        prune_connections_threshold=0.1,
+        growth_phase_length=10,
+        pruning_phase_length=5
+    )
 
-    # Train Model
-    history = model.fit(x_train, 
-                        {'main_output': y_train, 'self_modeling_output': y_train}, 
-                        validation_data=(x_test, {'main_output': y_test, 'self_modeling_output': y_test}), 
-                        epochs=10, batch_size=64, 
-                        callbacks=[early_stopping, reduce_lr])
-
-    # Evaluate Model
-    test_loss, test_acc_main, test_acc_self = model.evaluate(x_test, {'main_output': y_test, 'self_modeling_output': y_test}, verbose=2)
-    print(f'Test accuracy (main output): {test_acc_main:.4f}')
-    print(f'Test accuracy (self-modeling output): {test_acc_self:.4f}')
+    # Train the model
+    history = model.fit(
+        x_train, 
+        {'classification_output': y_train, 'self_modeling_output': x_train_flat}, 
+        validation_data=(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}),
+        epochs=10,
+        batch_size=64,
+        callbacks=[early_stopping, reduce_lr, self_modeling_callback]
+    )
+    
+    # Evaluate the model
+    evaluation_results = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}, verbose=2)
+    classification_acc = evaluation_results[1]
+    print(f"Test accuracy: {classification_acc:.4f}")
     
     # Save the model
     model.save('Trained Models/dstsmcgselnn_mnist.keras')
 
     # Plot Training History
-    plt.plot(history.history['main_output_accuracy'], label='Main Output Accuracy')
-    plt.plot(history.history['self_modeling_output_accuracy'], label='Self-Modeling Output Accuracy')
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['classification_output_accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_classification_output_accuracy'], label='Validation Accuracy')
+    plt.title('Classification Accuracy')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
-    plt.ylim([0, 1])
-    plt.legend(loc='lower right')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['self_modeling_output_mse'], label='Train MSE')
+    plt.plot(history.history['val_self_modeling_output_mse'], label='Validation MSE')
+    plt.title('Self-Modeling MSE')
+    plt.xlabel('Epoch')
+    plt.ylabel('MSE')
+    plt.legend()
+
+    plt.tight_layout()
     plt.show()
 
 if __name__ == "__main__":
     main()
 
-
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
 # python dstsmcgselnn_train.py
-# Test Accuracy: 0.9942
+# Test Accuracy: 0.9920

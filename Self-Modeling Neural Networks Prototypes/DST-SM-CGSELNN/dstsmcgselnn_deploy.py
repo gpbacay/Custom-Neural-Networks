@@ -78,4 +78,4 @@ if __name__ == "__main__":
 
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
 # python dstsmcgselnn_deploy.py
-# Remarks: PASSED! (with 99.48% accuracy and predicted digit-7 correctly with 100% confidence)
+# Remarks: PASSED! (with 99.21% accuracy and predicted digit-7 correctly with 100% confidence)
