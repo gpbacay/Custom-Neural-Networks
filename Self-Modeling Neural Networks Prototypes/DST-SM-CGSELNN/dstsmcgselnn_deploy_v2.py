@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score, classification_report
+import seaborn as sns
 
 # Load the trained model
 try:
@@ -64,8 +66,43 @@ def display_image_and_prediction(image_path, predicted_digit, confidence):
     plt.axis('off')
     plt.show()
 
+def evaluate_model_on_test_data(x_test, y_test):
+    """
+    This function evaluates the model on the test data and prints various metrics such as:
+    F1-score, confusion matrix, precision, recall, and prevalence.
+    """
+    # Get model predictions on the test set
+    y_pred_probs = model.predict(x_test)
+    y_pred_classes = np.argmax(y_pred_probs[0], axis=1)  # The first output corresponds to classification
+    y_true_classes = np.argmax(y_test, axis=1)  # Convert one-hot encoded labels to class indices
+    
+    # Confusion matrix
+    conf_matrix = confusion_matrix(y_true_classes, y_pred_classes)
+    
+    # Precision, Recall, F1-score
+    precision = precision_score(y_true_classes, y_pred_classes, average='weighted')
+    recall = recall_score(y_true_classes, y_pred_classes, average='weighted')
+    f1 = f1_score(y_true_classes, y_pred_classes, average='weighted')
+
+    # Prevalence is the proportion of actual positives (true samples of each class)
+    prevalence = np.sum(y_true_classes) / len(y_true_classes)
+
+    print(f"Classification Report:\n{classification_report(y_true_classes, y_pred_classes)}")
+    print(f"Precision (Specificity): {precision:.4f}")
+    print(f"Recall (Sensitivity): {recall:.4f}")
+    print(f"F1-Score: {f1:.4f}")
+    print(f"Prevalence: {prevalence:.4f}")
+
+    # Plot confusion matrix
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues', xticklabels=range(10), yticklabels=range(10))
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.title('Confusion Matrix')
+    plt.show()
+
 if __name__ == "__main__":
-    # Example usage
+    # Example usage: Predict an image
     test_image_path = 'Test/img_5.png'  # Replace with your image path
     result = predict(test_image_path)
     if result is not None:
@@ -75,7 +112,20 @@ if __name__ == "__main__":
         display_image_and_prediction(test_image_path, predicted_digit, confidence)
     else:
         print("Prediction failed.")
+    
+    # Evaluate the model on the full test dataset
+    from tensorflow.keras.datasets import mnist
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+    # Preprocessing test data
+    x_test = x_test.astype('float32') / 255
+    x_test = np.expand_dims(x_test, axis=-1)  # Reshape to (n_samples, 28, 28, 1)
+    y_test = tf.keras.utils.to_categorical(y_test, 10)
+
+    # Evaluate the model on test data and display metrics
+    evaluate_model_on_test_data(x_test, y_test)
+
 
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
-# python dstsmcgselnn_deploy.py
-# Remarks: PASSED (with 99.21% accuracy and predicted digit-7 correctly with 100% confidence)
+# python dstsmcgselnn_deploy_v2.py
+# Remarks: PASSED

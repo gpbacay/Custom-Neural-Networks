@@ -16,8 +16,8 @@ class HebbianHomeostaticLayer(tf.keras.layers.Layer):
     
     def build(self, input_shape):
         self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
-                                      initializer='random_normal',
-                                      trainable=True)
+                                    initializer='random_normal',
+                                    trainable=True)
     
     def call(self, inputs):
         inputs = tf.squeeze(inputs, axis=1)
@@ -234,7 +234,7 @@ def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_
 
 class SelfModelingCallback(Callback):
     def __init__(self, reservoir_layer, performance_metric='accuracy', target_metric=0.95, 
-                 add_neurons_threshold=0.01, prune_connections_threshold=0.1, growth_phase_length=10, pruning_phase_length=5):
+                add_neurons_threshold=0.01, prune_connections_threshold=0.1, growth_phase_length=10, pruning_phase_length=5):
         super().__init__()
         self.reservoir_layer = reservoir_layer
         self.performance_metric = performance_metric
