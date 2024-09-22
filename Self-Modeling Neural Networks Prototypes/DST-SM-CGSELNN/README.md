@@ -2,7 +2,7 @@
 
 ## Abstract
 
-This paper introduces the Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN), a novel neural network architecture that integrates several advanced techniques. The model combines convolutional layers, spatio-temporal summary mixing, gated spiking neurons, elastic reservoir computing, Hebbian and Homeostatic Neuroplasticity, and self-modeling mechanisms. When tested on the MNIST dataset, the DST-SM-CGSELNN achieves a test accuracy of 99.20%, demonstrating its effectiveness in handling complex spatio-temporal data.
+This paper introduces the Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN), a novel neural network architecture that integrates several advanced techniques. The model combines convolutional layers, spatio-temporal summary mixing, gated spiking neurons, elastic reservoir computing, Hebbian and Homeostatic Neuroplasticity, and self-modeling mechanisms. When tested on the MNIST dataset, the DST-SM-CGSELNN achieves a test accuracy of 99.21% and a 100% confidence in correct predictions, demonstrating its effectiveness in handling complex spatio-temporal data.
 
 ## Introduction
 

@@ -217,7 +217,7 @@ def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_
     hebbian_output = hebbian_homeostatic_layer(lnn_output)
 
     x = Flatten()(hebbian_output)
-    x = Dense(128, activation='relu')(x)
+    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
     x = Dropout(0.5)(x)
 
     # Self-modeling Mechanism: Auxiliary task (predict flattened input)
