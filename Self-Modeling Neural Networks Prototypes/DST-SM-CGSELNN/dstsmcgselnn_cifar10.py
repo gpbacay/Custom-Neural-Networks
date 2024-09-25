@@ -283,44 +283,87 @@ def main():
     (x_train, y_train), (x_test, y_test) = cifar10.load_data()
     x_train = x_train.astype('float32') / 255.0
     x_test = x_test.astype('float32') / 255.0
-    y_train = to_categorical(y_train, num_classes=10)
-    y_test = to_categorical(y_test, num_classes=10)
+    y_train = to_categorical(y_train, 10)
+    y_test = to_categorical(y_test, 10)
 
+    # Flatten images for self-modeling task
+    x_train_flat = x_train.reshape((x_train.shape[0], -1))
+    x_test_flat = x_test.reshape((x_test.shape[0], -1))
+
+    # Hyperparameters
     input_shape = (32, 32, 3)  # CIFAR-10 images are 32x32 with 3 color channels
-    reservoir_dim = 64
+    reservoir_dim = 100
     spectral_radius = 0.9
     leak_rate = 0.2
     spike_threshold = 0.5
-    max_dynamic_reservoir_dim = 128
-    output_dim = 10  # CIFAR-10 has 10 classes
+    max_dynamic_reservoir_dim = 1000
+    output_dim = 10
 
-    model = create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim)
+    # Create model
+    model, reservoir_layer = create_dstsmcgselnn_model(
+        input_shape=input_shape,
+        reservoir_dim=reservoir_dim,
+        spectral_radius=spectral_radius,
+        leak_rate=leak_rate,
+        spike_threshold=spike_threshold,
+        max_dynamic_reservoir_dim=max_dynamic_reservoir_dim,
+        output_dim=output_dim
+    )
 
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    # Compile the model
+    model.compile(
+        optimizer='adam', 
+        loss={'classification_output': 'categorical_crossentropy', 'self_modeling_output': 'mse'},
+        metrics={'classification_output': 'accuracy', 'self_modeling_output': 'mse'}
+    )
 
-    # Callbacks
-    early_stopping = EarlyStopping(monitor='val_loss', patience=5)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=2, min_lr=1e-6)
+    # Define callbacks
+    early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=10, mode='max', restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=5, mode='max')
+    self_modeling_callback = SelfModelingCallback(
+        reservoir_layer=reservoir_layer,
+        performance_metric='val_classification_output_accuracy',
+        target_metric=0.95,
+        add_neurons_threshold=0.01,
+        prune_connections_threshold=0.1,
+        growth_phase_length=10,
+        pruning_phase_length=5
+    )
 
     # Train the model
-    history = model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=30, batch_size=32, callbacks=[early_stopping, reduce_lr])
+    history = model.fit(
+        x_train, 
+        {'classification_output': y_train, 'self_modeling_output': x_train_flat}, 
+        validation_data=(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}),
+        epochs=50,  # Increased epochs for CIFAR-10
+        batch_size=64,
+        callbacks=[early_stopping, reduce_lr, self_modeling_callback]
+    )
+    
+    # Evaluate the model
+    evaluation_results = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}, verbose=2)
+    classification_acc = evaluation_results[1]
+    print(f"Test accuracy: {classification_acc:.4f}")
 
-    # Plot training & validation accuracy values
-    plt.plot(history.history['accuracy'])
-    plt.plot(history.history['val_accuracy'])
-    plt.title('Model accuracy')
+    # Plot Training History
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['classification_output_accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_classification_output_accuracy'], label='Validation Accuracy')
+    plt.title('Classification Accuracy')
+    plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
-    plt.xlabel('Epoch')
-    plt.legend(['Train', 'Validation'], loc='upper left')
-    plt.show()
+    plt.legend()
 
-    # Plot training & validation loss values
-    plt.plot(history.history['loss'])
-    plt.plot(history.history['val_loss'])
-    plt.title('Model loss')
-    plt.ylabel('Loss')
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['self_modeling_output_mse'], label='Train MSE')
+    plt.plot(history.history['val_self_modeling_output_mse'], label='Validation MSE')
+    plt.title('Self-Modeling MSE')
     plt.xlabel('Epoch')
-    plt.legend(['Train', 'Validation'], loc='upper left')
+    plt.ylabel('MSE')
+    plt.legend()
+
+    plt.tight_layout()
     plt.show()
 
 if __name__ == "__main__":
@@ -328,7 +371,6 @@ if __name__ == "__main__":
 
 
 
-
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
-# python dstsmcgselnn_mnist.py
+# python dstsmcgselnn_cifar10.py
 # Test Accuracy: 
