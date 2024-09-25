@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
+from tensorflow.keras.datasets import mnist
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score, classification_report
 import seaborn as sns
 
@@ -85,13 +86,15 @@ def evaluate_model_on_test_data(x_test, y_test):
     f1 = f1_score(y_true_classes, y_pred_classes, average='weighted')
 
     # Prevalence is the proportion of actual positives (true samples of each class)
-    prevalence = np.sum(y_true_classes) / len(y_true_classes)
+    prevalence_per_class = np.bincount(y_true_classes) / len(y_true_classes)
 
     print(f"Classification Report:\n{classification_report(y_true_classes, y_pred_classes)}")
     print(f"Precision (Specificity): {precision:.4f}")
     print(f"Recall (Sensitivity): {recall:.4f}")
     print(f"F1-Score: {f1:.4f}")
-    print(f"Prevalence: {prevalence:.4f}")
+    # Output prevalence per class
+    for i, prevalence in enumerate(prevalence_per_class):
+        print(f"Prevalence of class {i}: {prevalence*100:.2f}%")
 
     # Plot confusion matrix
     plt.figure(figsize=(10, 8))
@@ -114,7 +117,6 @@ if __name__ == "__main__":
         print("Prediction failed.")
     
     # Evaluate the model on the full test dataset
-    from tensorflow.keras.datasets import mnist
     (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
     # Preprocessing test data
@@ -127,5 +129,5 @@ if __name__ == "__main__":
 
 
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
-# python dstsmcgselnn_deploy_v2.py
+# python deploy_and_evaluate.py
 # Remarks: PASSED
