@@ -129,5 +129,5 @@ if __name__ == "__main__":
 
 
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
-# python deploy_and_evaluate.py
+# python deploy_and_evaluate_mnist.py
 # Remarks: PASSED

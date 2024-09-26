@@ -1,11 +1,12 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Input, Dropout, Flatten, Reshape, Conv2D, MaxPooling2D
-from tensorflow.keras.callbacks import Callback, EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.layers import Dense, Input, Dropout, Flatten, Conv2D, MaxPooling2D
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.datasets import cifar10
 from tensorflow.keras.utils import to_categorical
 import matplotlib.pyplot as plt
 
+# Define Hebbian & Homeostatic Learning Layer
 class HebbianHomeostaticLayer(tf.keras.layers.Layer):
     def __init__(self, units, learning_rate=0.001, target_avg=0.5, homeostatic_rate=0.001, **kwargs):
         super(HebbianHomeostaticLayer, self).__init__(**kwargs)
@@ -16,8 +17,8 @@ class HebbianHomeostaticLayer(tf.keras.layers.Layer):
     
     def build(self, input_shape):
         self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
-                                    initializer='random_normal',
-                                    trainable=True)
+                                      initializer='random_normal',
+                                      trainable=True)
     
     def call(self, inputs):
         inputs = tf.squeeze(inputs, axis=1)
@@ -43,6 +44,7 @@ class HebbianHomeostaticLayer(tf.keras.layers.Layer):
         })
         return config
 
+# Define Spatio-Temporal Summary Mixing Layer
 class SpatioTemporalSummaryMixing(tf.keras.layers.Layer):
     def __init__(self, d_model, dropout_rate=0.1, **kwargs):
         super(SpatioTemporalSummaryMixing, self).__init__(**kwargs)
@@ -87,6 +89,7 @@ class SpatioTemporalSummaryMixing(tf.keras.layers.Layer):
         })
         return config
 
+# Define Gated Spiking Elastic Liquid Neural Network (LNN) Layer
 class GatedSpikingElasticLNNStep(tf.keras.layers.Layer):
     def __init__(self, initial_reservoir_size, input_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, **kwargs):
         super().__init__(**kwargs)
@@ -148,10 +151,7 @@ class GatedSpikingElasticLNNStep(tf.keras.layers.Layer):
             return
 
         new_reservoir_weights = tf.random.normal((new_neurons, current_size + new_neurons))
-        full_new_weights = tf.concat([
-            tf.concat([self.spatiotemporal_reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1),
-            new_reservoir_weights
-        ], axis=0)
+        full_new_weights = tf.concat([tf.concat([self.spatiotemporal_reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1), new_reservoir_weights], axis=0)
         
         spectral_radius = tf.math.real(tf.reduce_max(tf.abs(tf.linalg.eigvals(full_new_weights))))
         scaling_factor = self.spectral_radius / spectral_radius
@@ -183,187 +183,82 @@ class GatedSpikingElasticLNNStep(tf.keras.layers.Layer):
         })
         return config
 
+# Create Model for Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
 def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim):
     inputs = Input(shape=input_shape)
 
-    # Convolutional layers
-    x = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
-    x = MaxPooling2D((2, 2))(x)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-    x = MaxPooling2D((2, 2))(x)
-    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-    x = MaxPooling2D((2, 2))(x)
+    # Convolutional layers for feature extraction
+    x = Conv2D(32, kernel_size=(3, 3), activation='relu', padding='same')(inputs)
+    x = MaxPooling2D(pool_size=(2, 2))(x)
+    x = Conv2D(64, kernel_size=(3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D(pool_size=(2, 2))(x)
     x = Flatten()(x)
 
-    # Summary mixing layer
-    summary_mixing_layer = SpatioTemporalSummaryMixing(d_model=128)
-    x = Reshape((1, x.shape[-1]))(x)
-    x = summary_mixing_layer(x)
-
-    # Reservoir layer
-    reservoir_layer = GatedSpikingElasticLNNStep(
-        initial_reservoir_size=reservoir_dim,
-        input_dim=x.shape[-1],
-        spectral_radius=spectral_radius,
-        leak_rate=leak_rate,
-        spike_threshold=spike_threshold,
-        max_dynamic_reservoir_dim=max_dynamic_reservoir_dim
-    )
-    lnn_layer = tf.keras.layers.RNN(reservoir_layer, return_sequences=True)
-    lnn_output = lnn_layer(x)
-
-    # Hebbian homeostatic layer
-    hebbian_homeostatic_layer = HebbianHomeostaticLayer(units=reservoir_dim, name='hebbian_homeostatic_layer')
-    hebbian_output = hebbian_homeostatic_layer(lnn_output)
-
-    x = Flatten()(hebbian_output)
-    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
-    x = Dropout(0.5)(x)
-
-    # Self-modeling Mechanism: Auxiliary task (predict flattened input)
-    self_modeling_output = Dense(np.prod(input_shape), activation='sigmoid', name='self_modeling_output')(x)
+    # Gated Spiking Elastic Liquid Neural Network Layer
+    lnn_step = GatedSpikingElasticLNNStep(initial_reservoir_size=reservoir_dim,
+                                          input_dim=tf.shape(x)[-1],
+                                          spectral_radius=spectral_radius,
+                                          leak_rate=leak_rate,
+                                          spike_threshold=spike_threshold,
+                                          max_dynamic_reservoir_dim=max_dynamic_reservoir_dim)
     
-    # Classification output
-    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
-    x = Dropout(0.5)(x)
-    classification_output = Dense(output_dim, activation='softmax', name='classification_output', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
+    lnn_output = lnn_step(x, [tf.zeros((tf.shape(x)[0], max_dynamic_reservoir_dim))])[0]
+    
+    # Hebbian & Homeostatic Learning Layer
+    hebbian_layer = HebbianHomeostaticLayer(units=output_dim)
+    final_output = hebbian_layer(lnn_output)
 
-    model = tf.keras.Model(inputs=inputs, outputs=[classification_output, self_modeling_output])
+    # Spatio-Temporal Summary Mixing Layer
+    spatiotemporal_layer = SpatioTemporalSummaryMixing(d_model=output_dim)
+    spatiotemporal_output = spatiotemporal_layer(final_output)
 
-    return model, reservoir_layer
-
-class SelfModelingCallback(Callback):
-    def __init__(self, reservoir_layer, performance_metric='accuracy', target_metric=0.95, 
-                add_neurons_threshold=0.01, prune_connections_threshold=0.1, growth_phase_length=10, pruning_phase_length=5):
-        super().__init__()
-        self.reservoir_layer = reservoir_layer
-        self.performance_metric = performance_metric
-        self.target_metric = target_metric
-        self.initial_add_neurons_threshold = add_neurons_threshold
-        self.initial_prune_connections_threshold = prune_connections_threshold
-        self.growth_phase_length = growth_phase_length
-        self.pruning_phase_length = pruning_phase_length
-        self.current_phase = 'growth'
-        self.phase_counter = 0
-        self.performance_history = []
-
-    def on_epoch_end(self, epoch, logs=None):
-        current_metric = logs.get(self.performance_metric, 0)
-        
-        self.performance_history.append(current_metric)
-        
-        self.add_neurons_threshold = self.initial_add_neurons_threshold * (1 - current_metric)
-        self.prune_connections_threshold = self.initial_prune_connections_threshold * current_metric
-
-        self.phase_counter += 1
-        if self.current_phase == 'growth' and self.phase_counter >= self.growth_phase_length:
-            self.current_phase = 'pruning'
-            self.phase_counter = 0
-        elif self.current_phase == 'pruning' and self.phase_counter >= self.pruning_phase_length:
-            self.current_phase = 'growth'
-            self.phase_counter = 0
-
-        if len(self.performance_history) > 5:
-            improvement_rate = (current_metric - self.performance_history[-5]) / 5
-            
-            if improvement_rate > 0.01:
-                self.reservoir_layer.add_neurons(growth_rate=10)
-            elif improvement_rate < 0.001:
-                self.reservoir_layer.prune_connections(prune_rate=0.1)
-
-        if current_metric >= self.target_metric:
-            print(f" - Performance metric {self.performance_metric} reached target {self.target_metric}. Current phase: {self.current_phase}")
-            if self.current_phase == 'growth':
-                self.reservoir_layer.add_neurons(growth_rate=10)
-            elif self.current_phase == 'pruning':
-                self.reservoir_layer.prune_connections(prune_rate=0.1)
+    outputs = Dense(output_dim, activation='softmax')(spatiotemporal_output)
+    
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
+    
+    return model
 
 def main():
-    # Load and preprocess CIFAR-10 dataset
+    # Load dataset (CIFAR-10) as a test example
     (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-    x_train = x_train.astype('float32') / 255.0
-    x_test = x_test.astype('float32') / 255.0
+
+    # Normalize the data
+    x_train = x_train.astype('float32') / 255
+    x_test = x_test.astype('float32') / 255
+
+    # Convert labels to categorical format
     y_train = to_categorical(y_train, 10)
     y_test = to_categorical(y_test, 10)
 
-    # Flatten images for self-modeling task
-    x_train_flat = x_train.reshape((x_train.shape[0], -1))
-    x_test_flat = x_test.reshape((x_test.shape[0], -1))
-
-    # Hyperparameters
-    input_shape = (32, 32, 3)  # CIFAR-10 images are 32x32 with 3 color channels
-    reservoir_dim = 100
-    spectral_radius = 0.9
-    leak_rate = 0.2
+    # Define hyperparameters
+    input_shape = x_train.shape[1:]
+    reservoir_dim = 512
+    spectral_radius = 1.2
+    leak_rate = 0.3
     spike_threshold = 0.5
-    max_dynamic_reservoir_dim = 1000
+    max_dynamic_reservoir_dim = 1024
     output_dim = 10
 
-    # Create model
-    model, reservoir_layer = create_dstsmcgselnn_model(
-        input_shape=input_shape,
-        reservoir_dim=reservoir_dim,
-        spectral_radius=spectral_radius,
-        leak_rate=leak_rate,
-        spike_threshold=spike_threshold,
-        max_dynamic_reservoir_dim=max_dynamic_reservoir_dim,
-        output_dim=output_dim
-    )
-
     # Compile the model
-    model.compile(
-        optimizer='adam', 
-        loss={'classification_output': 'categorical_crossentropy', 'self_modeling_output': 'mse'},
-        metrics={'classification_output': 'accuracy', 'self_modeling_output': 'mse'}
-    )
+    model = create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim)
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
-    # Define callbacks
-    early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=10, mode='max', restore_best_weights=True)
-    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=5, mode='max')
-    self_modeling_callback = SelfModelingCallback(
-        reservoir_layer=reservoir_layer,
-        performance_metric='val_classification_output_accuracy',
-        target_metric=0.95,
-        add_neurons_threshold=0.01,
-        prune_connections_threshold=0.1,
-        growth_phase_length=10,
-        pruning_phase_length=5
-    )
+    # Print model summary
+    model.summary()
 
-    # Train the model
-    history = model.fit(
-        x_train, 
-        {'classification_output': y_train, 'self_modeling_output': x_train_flat}, 
-        validation_data=(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}),
-        epochs=50,  # Increased epochs for CIFAR-10
-        batch_size=64,
-        callbacks=[early_stopping, reduce_lr, self_modeling_callback]
-    )
-    
-    # Evaluate the model
-    evaluation_results = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}, verbose=2)
-    classification_acc = evaluation_results[1]
-    print(f"Test accuracy: {classification_acc:.4f}")
+    # Set up callbacks
+    early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=2, min_lr=0.00001)
 
-    # Plot Training History
-    plt.figure(figsize=(12, 5))
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['classification_output_accuracy'], label='Train Accuracy')
-    plt.plot(history.history['val_classification_output_accuracy'], label='Validation Accuracy')
-    plt.title('Classification Accuracy')
-    plt.xlabel('Epoch')
+    # Train the model for 10 epochs
+    history = model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=10, batch_size=64, callbacks=[early_stopping, reduce_lr])
+
+    # Plot training and validation accuracy
+    plt.plot(history.history['accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.xlabel('Epochs')
     plt.ylabel('Accuracy')
     plt.legend()
-
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['self_modeling_output_mse'], label='Train MSE')
-    plt.plot(history.history['val_self_modeling_output_mse'], label='Validation MSE')
-    plt.title('Self-Modeling MSE')
-    plt.xlabel('Epoch')
-    plt.ylabel('MSE')
-    plt.legend()
-
-    plt.tight_layout()
     plt.show()
 
 if __name__ == "__main__":
@@ -371,6 +266,7 @@ if __name__ == "__main__":
 
 
 
+
 # Dynamic Spatio-Temporal Self-Modeling Convolutional Gated Spiking Elastic Liquid Neural Network (DST-SM-CGSELNN)
 # python dstsmcgselnn_cifar10.py
-# Test Accuracy: 
+# Test Accuracy: 0.1675
