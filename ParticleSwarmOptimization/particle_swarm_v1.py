@@ -183,4 +183,4 @@ warehouse_locations = [(swarm.global_best_position[i], swarm.global_best_positio
 plot_results(x_bounds, y_bounds, store_locations, residential_locations, warehouse_locations)
 
 
-# Run Command: python particle_swarm.py
+# Run Command: python particle_swarm_v1.py
