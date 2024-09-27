@@ -7,7 +7,7 @@ from matplotlib.animation import FuncAnimation
 x_bounds = [0, 100]  # Boundaries for x-coordinates
 y_bounds = [0, 100]  # Boundaries for y-coordinates
 num_points = 3  # Number of points to optimize
-num_particles = 500  # Number of particles in the swarm
+num_particles = 1000  # Number of particles in the swarm
 num_iterations = 1000  # Maximum number of optimization iterations
 i_weight = 0.7  # Inertia weight: controls the impact of the previous velocity
 m_weight = 1.5  # Memory weight: controls the particle's tendency to return to its best-known position
@@ -15,7 +15,7 @@ s_weight = 1.5  # Social weight: controls the influence of the global best posit
 
 # Generate random locations for entities (these could be stores, obstacles, targets, etc.)
 num_targets = 3
-num_obstacles = 13
+num_obstacles = 3
 target_locations = [[random.randint(*x_bounds), random.randint(*y_bounds)] for _ in range(num_targets)]
 obstacle_locations = [[random.randint(*x_bounds), random.randint(*y_bounds)] for _ in range(num_obstacles)]
 
@@ -183,7 +183,7 @@ def main():
 
 
     # Create the animation
-    anim = FuncAnimation(fig, update, frames=num_iterations, interval=100, blit=True)
+    anim = FuncAnimation(fig, update, frames=num_iterations, interval=50, blit=True)
 
     plt.xlabel("X", color='#dfdfdf')
     plt.ylabel("Y", color='#dfdfdf')
