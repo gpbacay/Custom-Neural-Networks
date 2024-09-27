@@ -143,13 +143,8 @@ class GatedSpikingElasticLNNStep(tf.keras.layers.Layer):
 
     def add_neurons(self, growth_rate):
         current_size = tf.shape(self.spatiotemporal_reservoir_weights)[0]
-        new_neurons = tf.minimum(
-            tf.cast(tf.math.ceil(current_size * growth_rate), tf.int32),
-            self.max_dynamic_reservoir_dim - current_size
-        )
-        new_neurons = tf.maximum(new_neurons, 0)
-
-        if new_neurons == 0:
+        new_neurons = min(growth_rate, self.max_dynamic_reservoir_dim - current_size)
+        if new_neurons <= 0:
             return
 
         new_reservoir_weights = tf.random.normal((new_neurons, current_size + new_neurons))
@@ -229,7 +224,7 @@ def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_
     hebbian_output = hebbian_homeostatic_layer(lnn_output)
 
     x = Flatten()(hebbian_output)
-    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
+    x = Dense(512, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
     x = BatchNormalization()(x)
     x = Dropout(0.5)(x)
 
@@ -237,7 +232,7 @@ def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_
     self_modeling_output = Dense(np.prod(input_shape), activation='sigmoid', name='self_modeling_output')(x)
     
     # Classification output
-    x = Dense(64, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
+    x = Dense(256, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
     x = BatchNormalization()(x)
     x = Dropout(0.5)(x)
     classification_output = Dense(output_dim, activation='softmax', name='classification_output', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
@@ -248,7 +243,7 @@ def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_
 
 class SelfModelingCallback(Callback):
     def __init__(self, reservoir_layer, performance_metric='accuracy', target_metric=0.95, 
-                 add_neurons_threshold=0.1, prune_connections_threshold=0.1, growth_phase_length=5, pruning_phase_length=5):
+                 add_neurons_threshold=0.01, prune_connections_threshold=0.1, growth_phase_length=5, pruning_phase_length=3):
         super().__init__()
         self.reservoir_layer = reservoir_layer
         self.performance_metric = performance_metric
@@ -280,14 +275,14 @@ class SelfModelingCallback(Callback):
             improvement_rate = (current_metric - self.performance_history[-3]) / 3
             
             if improvement_rate > 0.01:
-                self.reservoir_layer.add_neurons(growth_rate=0.05)
-            elif improvement_rate < 0.01:
+                self.reservoir_layer.add_neurons(growth_rate=5)
+            elif improvement_rate < 0.001:
                 self.reservoir_layer.prune_connections(prune_rate=0.05)
 
         if current_metric >= self.target_metric:
             print(f" - Performance metric {self.performance_metric} reached target {self.target_metric}. Current phase: {self.current_phase}")
             if self.current_phase == 'growth':
-                self.reservoir_layer.add_neurons(growth_rate=0.05)
+                self.reservoir_layer.add_neurons(growth_rate=5)
             elif self.current_phase == 'pruning':
                 self.reservoir_layer.prune_connections(prune_rate=0.05)
 
@@ -312,11 +307,11 @@ def main():
 
     # Hyperparameters
     input_shape = (32, 32, 3)  # CIFAR-10 images are 32x32 with 3 color channels
-    reservoir_dim = 512
-    max_dynamic_reservoir_dim = 4096
+    reservoir_dim = 100
     spectral_radius = 0.9
     leak_rate = 0.05
     spike_threshold = 0.5
+    max_dynamic_reservoir_dim = 1000
     output_dim = 10
 
     # Create model
@@ -344,11 +339,11 @@ def main():
     self_modeling_callback = SelfModelingCallback(
         reservoir_layer=reservoir_layer,
         performance_metric='val_classification_output_accuracy',
-        target_metric=0.9,
-        add_neurons_threshold=0.01,
-        prune_connections_threshold=0.01,
-        growth_phase_length=1,
-        pruning_phase_length=1
+        target_metric=0.8,
+        add_neurons_threshold=0.005,
+        prune_connections_threshold=0.05,
+        growth_phase_length=5,
+        pruning_phase_length=3
     )
 
     # Train the model
@@ -363,7 +358,7 @@ def main():
     
     # Evaluate the model
     evaluation_results = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}, verbose=2)
-    classification_acc = evaluation_results[1] 
+    classification_acc = evaluation_results[1]
     print(f"Test accuracy: {classification_acc:.4f}")
 
     # Plot Training History
