@@ -1,10 +1,12 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Input, Dropout, Flatten, Reshape, Conv2D, MaxPooling2D
+from tensorflow.keras.callbacks import Callback, EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.utils import to_categorical
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from pycocotools.coco import COCO  # Required for working with COCO dataset
 import matplotlib.pyplot as plt
+from pycocotools.coco import COCO
+from PIL import Image
+import os
 
 
 class HebbianHomeostaticLayer(tf.keras.layers.Layer):
@@ -190,54 +192,228 @@ class GatedSpikingElasticLNNStep(tf.keras.layers.Layer):
 
 
 def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim):
-    """Create a dynamic spiking temporal model for object detection."""
     inputs = Input(shape=input_shape)
 
-    # Convolutional layers for feature extraction
+    # Convolutional layers
     x = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
     x = MaxPooling2D((2, 2))(x)
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
     x = MaxPooling2D((2, 2))(x)
+    x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
+    x = MaxPooling2D((2, 2))(x)
     x = Flatten()(x)
 
-    # Spiking elastic liquid neural network
-    x = Reshape((1, -1))(x)
-    x = tf.keras.layers.RNN(GatedSpikingElasticLNNStep(
+    # Summary mixing layer
+    summary_mixing_layer = SpatioTemporalSummaryMixing(d_model=128)
+    x = Reshape((1, x.shape[-1]))(x)
+    x = summary_mixing_layer(x)
+
+    # Reservoir layer
+    reservoir_layer = GatedSpikingElasticLNNStep(
         initial_reservoir_size=reservoir_dim,
         input_dim=x.shape[-1],
         spectral_radius=spectral_radius,
         leak_rate=leak_rate,
         spike_threshold=spike_threshold,
-        max_dynamic_reservoir_dim=max_dynamic_reservoir_dim))(x)
+        max_dynamic_reservoir_dim=max_dynamic_reservoir_dim
+    )
+    lnn_layer = tf.keras.layers.RNN(reservoir_layer, return_sequences=True)
+    lnn_output = lnn_layer(x)
 
-    # Classification head (output for object detection)
-    outputs = Dense(output_dim, activation='sigmoid')(x)
+    # Hebbian homeostatic layer
+    hebbian_homeostatic_layer = HebbianHomeostaticLayer(units=reservoir_dim, name='hebbian_homeostatic_layer')
+    hebbian_output = hebbian_homeostatic_layer(lnn_output)
 
-    model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
-    return model
+    x = Flatten()(hebbian_output)
+    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
+    x = Dropout(0.5)(x)
 
+    # Self-modeling Mechanism: Auxiliary task (predict flattened input)
+    self_modeling_output = Dense(np.prod(input_shape), activation='sigmoid', name='self_modeling_output')(x)
+    
+    # Classification output
+    x = Dense(128, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
+    x = Dropout(0.5)(x)
+    classification_output = Dense(output_dim, activation='sigmoid', name='classification_output', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
+
+    model = tf.keras.Model(inputs=inputs, outputs=[classification_output, self_modeling_output])
+
+    return model, reservoir_layer
+
+class SelfModelingCallback(Callback):
+    def __init__(self, reservoir_layer, performance_metric='accuracy', target_metric=0.95, 
+                add_neurons_threshold=0.01, prune_connections_threshold=0.1, growth_phase_length=10, pruning_phase_length=5):
+        super().__init__()
+        self.reservoir_layer = reservoir_layer
+        self.performance_metric = performance_metric
+        self.target_metric = target_metric
+        self.initial_add_neurons_threshold = add_neurons_threshold
+        self.initial_prune_connections_threshold = prune_connections_threshold
+        self.growth_phase_length = growth_phase_length
+        self.pruning_phase_length = pruning_phase_length
+        self.current_phase = 'growth'
+        self.phase_counter = 0
+        self.performance_history = []
+
+    def on_epoch_end(self, epoch, logs=None):
+        current_metric = logs.get(self.performance_metric, 0)
+        
+        self.performance_history.append(current_metric)
+        
+        self.add_neurons_threshold = self.initial_add_neurons_threshold * (1 - current_metric)
+        self.prune_connections_threshold = self.initial_prune_connections_threshold * current_metric
+
+        self.phase_counter += 1
+        if self.current_phase == 'growth' and self.phase_counter >= self.growth_phase_length:
+            self.current_phase = 'pruning'
+            self.phase_counter = 0
+        elif self.current_phase == 'pruning' and self.phase_counter >= self.pruning_phase_length:
+            self.current_phase = 'growth'
+            self.phase_counter = 0
+
+        if len(self.performance_history) > 5:
+            improvement_rate = (current_metric - self.performance_history[-5]) / 5
+            
+            if improvement_rate > 0.01:
+                self.reservoir_layer.add_neurons(growth_rate=10)
+            elif improvement_rate < 0.001:
+                self.reservoir_layer.prune_connections(prune_rate=0.1)
+
+        if current_metric >= self.target_metric:
+            print(f" - Performance metric {self.performance_metric} reached target {self.target_metric}. Current phase: {self.current_phase}")
+            if self.current_phase == 'growth':
+                self.reservoir_layer.add_neurons(growth_rate=10)
+            elif self.current_phase == 'pruning':
+                self.reservoir_layer.prune_connections(prune_rate=0.1)
+
+def load_mini_coco(annotation_file, image_dir, num_classes=10, num_samples=1000, input_shape=(224, 224, 3)):
+    coco = COCO(annotation_file)
+    
+    # Get the first 10 categories
+    categories = list(coco.cats.items())[:num_classes]
+    category_ids = [cat[0] for cat in categories]
+    
+    images = []
+    labels = []
+    
+    for cat_id in category_ids:
+        img_ids = coco.getImgIds(catIds=[cat_id])[:num_samples // num_classes]
+        
+        for img_id in img_ids:
+            img_info = coco.loadImgs(img_id)[0]
+            img_path = os.path.join(image_dir, img_info['file_name'])
+            
+            try:
+                img = Image.open(img_path).convert('RGB')
+                img = img.resize(input_shape[:2])
+                img_array = np.array(img) / 255.0
+                
+                images.append(img_array)
+                
+                ann_ids = coco.getAnnIds(imgIds=img_id, catIds=[cat_id])
+                anns = coco.loadAnns(ann_ids)
+                
+                label = np.zeros(num_classes)
+                label[category_ids.index(cat_id)] = 1
+                labels.append(label)
+                
+            except Exception as e:
+                print(f"Error loading image {img_path}: {e}")
+    
+    return np.array(images), np.array(labels)
 
 def main():
-    """Main function to create and compile the model for COCO dataset."""
-    input_shape = (640, 640, 3)  # For COCO dataset RGB images
-    reservoir_dim = 128
-    spectral_radius = 0.9
-    leak_rate = 0.1
-    spike_threshold = 0.5
-    max_dynamic_reservoir_dim = 256
-    output_dim = 80  # For COCO's 80 classes
+    # Load and preprocess mini COCO dataset
+    annotation_file = 'path/to/coco/annotations/instances_train2017.json'
+    image_dir = 'path/to/coco/train2017'
+    input_shape = (224, 224, 3)
+    num_classes = 10
 
-    # Create the model
-    model = create_dstsmcgselnn_model(
-        input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim
+    x_data, y_data = load_mini_coco(annotation_file, image_dir, num_classes=num_classes, input_shape=input_shape)
+
+    # Split data into train and test sets
+    split = int(0.8 * len(x_data))
+    x_train, x_test = x_data[:split], x_data[split:]
+    y_train, y_test = y_data[:split], y_data[split:]
+
+    # Flatten images for self-modeling task
+    x_train_flat = x_train.reshape((x_train.shape[0], -1))
+    x_test_flat = x_test.reshape((x_test.shape[0], -1))
+
+    # Hyperparameters
+    reservoir_dim = 100
+    spectral_radius = 0.9
+    leak_rate = 0.2
+    spike_threshold = 0.5
+    max_dynamic_reservoir_dim = 1000
+    output_dim = num_classes
+
+    # Create model
+    model, reservoir_layer = create_dstsmcgselnn_model(
+        input_shape=input_shape,
+        reservoir_dim=reservoir_dim,
+        spectral_radius=spectral_radius,
+        leak_rate=leak_rate,
+        spike_threshold=spike_threshold,
+        max_dynamic_reservoir_dim=max_dynamic_reservoir_dim,
+        output_dim=output_dim
     )
 
     # Compile the model
-    model.compile(optimizer='adam', loss='categorical_crossentropy')
+    model.compile(
+        optimizer='adam', 
+        loss={'classification_output': 'binary_crossentropy', 'self_modeling_output': 'mse'},
+        metrics={'classification_output': 'accuracy', 'self_modeling_output': 'mse'}
+    )
 
-    # Display the model summary
-    model.summary()
+    # Define callbacks
+    early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=10, mode='max', restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.1, patience=5, mode='max')
+    self_modeling_callback = SelfModelingCallback(
+        reservoir_layer=reservoir_layer,
+        performance_metric='val_classification_output_accuracy',
+        target_metric=0.95,
+        add_neurons_threshold=0.01,
+        prune_connections_threshold=0.1,
+        growth_phase_length=10,
+        pruning_phase_length=5
+    )
 
+    # Train the model
+    history = model.fit(
+        x_train, 
+        {'classification_output': y_train, 'self_modeling_output': x_train_flat}, 
+        validation_data=(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}),
+        epochs=50,
+        batch_size=32,
+        callbacks=[early_stopping, reduce_lr, self_modeling_callback]
+    )
+    
+    # Evaluate the model
+    evaluation_results = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}, verbose=2)
+    classification_acc = evaluation_results[1]
+    print(f"Test accuracy: {classification_acc:.4f}")
+
+    # Plot Training History
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['classification_output_accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_classification_output_accuracy'], label='Validation Accuracy')
+    plt.title('Classification Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['self_modeling_output_mse'], label='Train MSE')
+    plt.plot(history.history['val_self_modeling_output_mse'], label='Validation MSE')
+    plt.title('Self-Modeling MSE')
+    plt.xlabel('Epoch')
+    plt.ylabel('MSE')
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     main()

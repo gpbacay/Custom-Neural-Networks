@@ -106,7 +106,7 @@ def evaluate_model_on_test_data(x_test, y_test):
 
 if __name__ == "__main__":
     # Example usage: Predict an image
-    test_image_path = 'Test/img_5.png'  # Replace with your image path
+    test_image_path = 'Test/img_4.png'  # Replace with your image path
     result = predict(test_image_path)
     if result is not None:
         predicted_digit, confidence = result

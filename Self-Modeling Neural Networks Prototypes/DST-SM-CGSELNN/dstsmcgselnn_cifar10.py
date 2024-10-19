@@ -148,10 +148,7 @@ class GatedSpikingElasticLNNStep(tf.keras.layers.Layer):
             return
 
         new_reservoir_weights = tf.random.normal((new_neurons, current_size + new_neurons))
-        full_new_weights = tf.concat([
-            tf.concat([self.spatiotemporal_reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1),
-            new_reservoir_weights
-        ], axis=0)
+        full_new_weights = tf.concat([tf.concat([self.spatiotemporal_reservoir_weights, tf.zeros((current_size, new_neurons))], axis=1), new_reservoir_weights], axis=0)
         
         spectral_radius = tf.math.real(tf.reduce_max(tf.abs(tf.linalg.eigvals(full_new_weights))))
         scaling_factor = self.spectral_radius / spectral_radius
@@ -186,19 +183,19 @@ class GatedSpikingElasticLNNStep(tf.keras.layers.Layer):
 def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_rate, spike_threshold, max_dynamic_reservoir_dim, output_dim):
     inputs = Input(shape=input_shape)
 
-    # Convolutional layers with BatchNormalization and increased depth
+    # Convolutional layers with increased depth
     x = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
     x = BatchNormalization()(x)
     x = MaxPooling2D((2, 2))(x)
-    x = Dropout(0.5)(x)
+    x = Dropout(0.3)(x)  # Reduced dropout rate
     x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
     x = BatchNormalization()(x)
     x = MaxPooling2D((2, 2))(x)
-    x = Dropout(0.5)(x)
+    x = Dropout(0.3)(x)  # Reduced dropout rate
     x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
     x = BatchNormalization()(x)
     x = MaxPooling2D((2, 2))(x)
-    x = Dropout(0.5)(x)
+    x = Dropout(0.3)(x)  # Reduced dropout rate
 
     x = Flatten()(x)
 
@@ -226,15 +223,16 @@ def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_
     x = Flatten()(hebbian_output)
     x = Dense(512, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
     x = BatchNormalization()(x)
-    x = Dropout(0.5)(x)
+    x = Dropout(0.3)(x)  # Reduced dropout rate
 
     # Self-modeling Mechanism: Auxiliary task (predict flattened input)
-    self_modeling_output = Dense(np.prod(input_shape), activation='sigmoid', name='self_modeling_output')(x)
+    x = BatchNormalization()(x)
+    self_modeling_output = Dense(np.prod(input_shape), activation='linear', name='self_modeling_output')(x)
     
     # Classification output
     x = Dense(256, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
     x = BatchNormalization()(x)
-    x = Dropout(0.5)(x)
+    x = Dropout(0.3)(x)  # Reduced dropout rate
     classification_output = Dense(output_dim, activation='softmax', name='classification_output', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
 
     model = tf.keras.Model(inputs=inputs, outputs=[classification_output, self_modeling_output])
@@ -242,7 +240,7 @@ def create_dstsmcgselnn_model(input_shape, reservoir_dim, spectral_radius, leak_
     return model, reservoir_layer
 
 class SelfModelingCallback(Callback):
-    def __init__(self, reservoir_layer, performance_metric='accuracy', target_metric=0.95, 
+    def __init__(self, reservoir_layer, performance_metric='classification_output_accuracy', target_metric=0.95, 
                  add_neurons_threshold=0.01, prune_connections_threshold=0.1, growth_phase_length=5, pruning_phase_length=3):
         super().__init__()
         self.reservoir_layer = reservoir_layer
@@ -294,10 +292,6 @@ def main():
     y_train = to_categorical(y_train, 10)
     y_test = to_categorical(y_test, 10)
 
-    # Flatten images for self-modeling task
-    x_train_flat = x_train.reshape((x_train.shape[0], -1))
-    x_test_flat = x_test.reshape((x_test.shape[0], -1))
-
     # Data Augmentation
     data_augmentation = tf.keras.Sequential([
         tf.keras.layers.RandomFlip("horizontal"),
@@ -308,8 +302,8 @@ def main():
     # Hyperparameters
     input_shape = (32, 32, 3)  # CIFAR-10 images are 32x32 with 3 color channels
     reservoir_dim = 100
-    spectral_radius = 0.9
-    leak_rate = 0.05
+    spectral_radius = 0.5
+    leak_rate = 0.5
     spike_threshold = 0.5
     max_dynamic_reservoir_dim = 1000
     output_dim = 10
@@ -328,18 +322,18 @@ def main():
     # Compile the model
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-        loss={'classification_output': 'categorical_crossentropy', 'self_modeling_output': 'mse'},
+        loss={'classification_output': 'categorical_crossentropy', 'self_modeling_output': 'mae'},
         loss_weights={'classification_output': 1.0, 'self_modeling_output': 0.1},
-        metrics={'classification_output': 'accuracy', 'self_modeling_output': 'mse'}
+        metrics={'classification_output': 'accuracy', 'self_modeling_output': 'mae'}
     )
 
     # Define callbacks
     early_stopping = EarlyStopping(monitor='val_classification_output_accuracy', patience=5, mode='max', restore_best_weights=True)
-    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.5, patience=3, min_lr=1e-6, mode='max')
+    reduce_lr = ReduceLROnPlateau(monitor='val_classification_output_accuracy', factor=0.5, patience=3, min_lr=1e-4, mode='max')
     self_modeling_callback = SelfModelingCallback(
         reservoir_layer=reservoir_layer,
         performance_metric='val_classification_output_accuracy',
-        target_metric=0.8,
+        target_metric=1.00,
         add_neurons_threshold=0.005,
         prune_connections_threshold=0.05,
         growth_phase_length=5,
@@ -349,15 +343,15 @@ def main():
     # Train the model
     history = model.fit(
         data_augmentation(x_train), 
-        {'classification_output': y_train, 'self_modeling_output': x_train_flat}, 
-        validation_data=(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}),
-        epochs=10,
+        {'classification_output': y_train, 'self_modeling_output': x_train.reshape(x_train.shape[0], -1)},  # Flattening for self-modeling
+        validation_data=(x_test, {'classification_output': y_test, 'self_modeling_output': x_test.reshape(x_test.shape[0], -1)}),  # Flattening for self-modeling
+        epochs=50,
         batch_size=64,
         callbacks=[early_stopping, reduce_lr, self_modeling_callback]
     )
     
     # Evaluate the model
-    evaluation_results = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test_flat}, verbose=2)
+    evaluation_results = model.evaluate(x_test, {'classification_output': y_test, 'self_modeling_output': x_test.reshape(x_test.shape[0], -1)}, verbose=2)
     classification_acc = evaluation_results[1]
     print(f"Test accuracy: {classification_acc:.4f}")
 
@@ -372,11 +366,11 @@ def main():
     plt.legend()
 
     plt.subplot(1, 2, 2)
-    plt.plot(history.history['self_modeling_output_mse'], label='Train MSE')
-    plt.plot(history.history['val_self_modeling_output_mse'], label='Validation MSE')
-    plt.title('Self-Modeling MSE')
+    plt.plot(history.history['self_modeling_output_mae'], label='Train MAE')
+    plt.plot(history.history['val_self_modeling_output_mae'], label='Validation MAE')
+    plt.title('Self-Modeling MAE')
     plt.xlabel('Epoch')
-    plt.ylabel('MSE')
+    plt.ylabel('MAE')
     plt.legend()
 
     plt.tight_layout()
